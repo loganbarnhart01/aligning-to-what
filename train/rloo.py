@@ -1,3 +1,8 @@
+import sys
+import os
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import shutil
 
 import torch
@@ -10,34 +15,38 @@ from transformers import (
 )
 
 from trl import ModelConfig, get_quantization_config, get_kbit_device_map, get_peft_config
-from trl.trainer.rloo_trainer import RLOOConfig, RLOOTrainer
+from trl.trainer.rloo_trainer import RLOOConfig
 from trl.trainer.utils import SIMPLE_QUERY_CHAT_TEMPLATE
 from trl.commands.cli_utils import TrlParser
 from peft import LoraConfig, get_peft_model
+
+from trainer.rloo_trainer import RLOOTrainer
+# from trl.trainer.rloo_trainer import RLOOTrainer
+from models.reward_model import RewardModelWrapper
 
 import psutil
 
 """
 python train/rloo.py    \
     --model_name_or_path=meta-llama/Meta-Llama-3-8B     \
+    --sft_model_path=meta-llama/Meta-Llama-3-8B     \
     --per_device_train_batch_size 4     \
     --learning_rate 1e-3     \
     --gradient_accumulation_steps 2     \
     --gradient_checkpointing=True     \
     --logging_steps 10     \
     --eval_steps 500     \
-    --output_dir=<output_dir>     \
+    --output_dir=/home/logan/covert-bias/weights/rloo_anthropic_hh_1     \
     --optim rmsprop     \
     --warmup_steps 150     \
     --report_to wandb     \
-    --fp16     \
     --logging_first_step     \
     --no_remove_unused_columns     \
     --use_peft     \
     --lora_r=16     \
     --load_in_4bit     \
     --lora_alpha=16    \
-    --reward_model_path <path_to_ArmoRM>
+    --reward_model_path RLHFlow/ArmoRM-Llama3-8B-v0.1 \
 """
 
 
@@ -45,7 +54,6 @@ if __name__ == "__main__":
     parser = TrlParser((RLOOConfig, ModelConfig))
     config, model_config = parser.parse_args_into_dataclasses()
     shutil.rmtree(config.output_dir, ignore_errors=True)
-    print("GCHECKPT: ", config.gradient_checkpointing)
     ###############
     # Model & Tokenizer
     ################
@@ -69,14 +77,15 @@ if __name__ == "__main__":
         config.reward_model_path,
         padding_side="left",
         trust_remote_code=True,
-        local_files_only=True,
+        # local_files_only=True,
     )
-    tokenizer.add_special_tokens({"pad_token": "[PAD]"})
+    # tokenizer.add_special_tokens({"pad_token": "[PAD]"})
     if tokenizer.chat_template is None:
        tokenizer.chat_template = SIMPLE_QUERY_CHAT_TEMPLATE
-    reward_model = AutoModelForSequenceClassification.from_pretrained(config.reward_model_path, trust_remote_code=True, local_files_only=True)
-    ref_policy = AutoModelForCausalLM.from_pretrained(config.sft_model_path, local_files_only=True)
-    policy = AutoModelForCausalLM.from_pretrained(config.sft_model_path, local_files_only=True, **model_kwargs)
+    reward_model = RewardModelWrapper(config.reward_model_path)
+    # reward_model = AutoModelForSequenceClassification.from_pretrained(config.reward_model_path, **model_kwargs)
+    ref_policy = AutoModelForCausalLM.from_pretrained(config.sft_model_path)
+    policy = AutoModelForCausalLM.from_pretrained(config.sft_model_path, **model_kwargs)
     if model_config.use_peft:
         lora_config = get_peft_config(model_config)
         policy = get_peft_model(policy, lora_config)
