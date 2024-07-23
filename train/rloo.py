@@ -54,6 +54,7 @@ if __name__ == "__main__":
     parser = TrlParser((RLOOConfig, ModelConfig))
     config, model_config = parser.parse_args_into_dataclasses()
     shutil.rmtree(config.output_dir, ignore_errors=True)
+    num_gpus = torch.cuda.device_count()
     ###############
     # Model & Tokenizer
     ################
@@ -126,6 +127,7 @@ if __name__ == "__main__":
         reward_model=reward_model,
         train_dataset=prepare_dataset(train_dataset, tokenizer),
         eval_dataset=prepare_dataset(eval_dataset, tokenizer),
+        num_gpus=num_gpus,
     )
     trainer.train()
     trainer.save_model(config.output_dir)

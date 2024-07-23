@@ -10,7 +10,7 @@ import pandas as pd
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from accelerate import Accelerator
+from accelerate import Accelerator, DeepSpeedPlugin
 from accelerate.utils import broadcast, gather_object
 from datasets import Dataset
 from torch.utils.data import DataLoader
@@ -45,7 +45,6 @@ from .utils import get_reward
 
 INVALID_LOGPROB = 1.0
 
-
 class RLOOTrainer(Trainer):
     def __init__(
         self,
@@ -60,7 +59,10 @@ class RLOOTrainer(Trainer):
         # less commonly used
         optimizers: Tuple[torch.optim.Optimizer, torch.optim.lr_scheduler.LambdaLR] = (None, None),
         callbacks: Optional[List[TrainerCallback]] = None,
+        num_gpus: Optional[int] = 1,
     ) -> None:
+        print("INITIALIZING")
+
         self.args = config
         args = config
         self.tokenizer = tokenizer
@@ -79,12 +81,23 @@ class RLOOTrainer(Trainer):
         self.eval_dataset = eval_dataset
         self.optimizer, self.lr_scheduler = optimizers
 
+        print("initializing 1")
+
         #########
         # calculate various batch sizes
         #########
         if args.total_episodes is None:  # allow the users to define episodes in terms of epochs.
             args.total_episodes = int(args.num_train_epochs * self.train_dataset_len)
-        accelerator = Accelerator(gradient_accumulation_steps=args.gradient_accumulation_steps)
+        if num_gpus > 1:
+            accelerator = Accelerator(
+                gradient_accumulation_steps=args.gradient_accumulation_steps,
+                mixed_precision= 'fp16' if args.fp16 else 'no',
+                )
+            print(f"Number of available GPUs: {num_gpus}")
+            print(f"Number of used GPUS: {accelerator.num_processes}")
+
+        else:
+            accelerator = Accelerator(gradient_accumulation_steps=args.gradient_accumulation_steps)
         self.accelerator = accelerator
         args.world_size = accelerator.num_processes
         args.local_batch_size = (
@@ -101,15 +114,18 @@ class RLOOTrainer(Trainer):
         args.num_total_batches = math.ceil(
             args.total_episodes / args.batch_size
         )  # we may train for more than `total_episodes`
-        time_tensor = torch.tensor(int(time.time()), device=accelerator.device)
-        time_int = broadcast(time_tensor, 0).item()  # avoid different timestamps across processes
-        args.run_name = f"{args.exp_name}__{args.seed}__{time_int}"
+        # time_tensor = torch.tensor(int(time.time()), device=accelerator.device)
+        # time_int = broadcast(time_tensor, 0).item()  # avoid different timestamps across processes
+        # args.run_name = f"{args.exp_name}__{args.seed}__{time_int}"
+        args.run_name = f"{args.exp_name}__{args.seed}"
         self.local_seed = args.seed + accelerator.process_index * 100003  # Prime
         if args.num_sample_generations > 0:
             self.sample_generations_freq = max(1, args.num_total_batches // args.num_sample_generations)
         self.local_dataloader_batch_size = exact_div(
             args.local_batch_size, args.rloo_k, "`local_batch_size` must be a multiple of rloo_k"
         )  # RLOO logic: needed because RLOO repeats the same prompt args.rloo_k times
+
+        print("initializing 2")
 
         #########
         # setup model, optimizer, and others
@@ -149,6 +165,8 @@ class RLOOTrainer(Trainer):
             os.makedirs(self.args.output_dir, exist_ok=True)
         self.backup_model = None
 
+        print("initializing 3")
+
         #########
         ### setup dataloader
         #########
@@ -173,6 +191,8 @@ class RLOOTrainer(Trainer):
         )  # no need to shuffle eval dataset
         self.eval_dataloader = accelerator.prepare(self.eval_dataloader)
 
+        print("initializing 4")
+
         if self.is_deepspeed_enabled:
             self.reward_model = prepare_deepspeed(
                 self.reward_model, args.per_device_train_batch_size, args.fp16, args.bf16
@@ -182,7 +202,9 @@ class RLOOTrainer(Trainer):
             )
             self.deepspeed = self.model
         else:
+            print("initializing 5")
             self.ref_policy = self.ref_policy.to(self.accelerator.device)
+            print("initializing 6")
             self.reward_model = self.reward_model.to(self.accelerator.device)
 
     def get_train_dataloader(self) -> DataLoader:
