@@ -59,22 +59,27 @@ class RLOOTrainer(Trainer):
         # less commonly used
         optimizers: Tuple[torch.optim.Optimizer, torch.optim.lr_scheduler.LambdaLR] = (None, None),
         callbacks: Optional[List[TrainerCallback]] = None,
-        num_gpus: Optional[int] = 1,
+        accelerator: Optional[Union[str, Accelerator]] = None,
     ) -> None:
         print("INITIALIZING")
 
         self.args = config
         args = config
         self.tokenizer = tokenizer
-        self.policy = policy
+        self.accelerator = accelerator
+        # if accelerator:
+        #     self.policy_model, self.ref_model, self.reward_model = self.accelerator.prepare(
+        #         policy, ref_policy, reward_model
+        #     )
+        # else:
+        self.policy_model = policy
+        self.ref_model = ref_policy
+        self.reward_model = reward_model
 
         self.policy.generation_config.eos_token_id = (
             None  # disable `pad_token_id` and `eos_token_id` because we just want to
         )
         self.policy.generation_config.pad_token_id = None  # generate tokens without truncation / padding
-
-        self.ref_policy = ref_policy
-        self.reward_model = reward_model
         self.train_dataset = train_dataset
         self.train_dataset_len = len(train_dataset)
         self.data_collator = data_collator
@@ -88,17 +93,16 @@ class RLOOTrainer(Trainer):
         #########
         if args.total_episodes is None:  # allow the users to define episodes in terms of epochs.
             args.total_episodes = int(args.num_train_epochs * self.train_dataset_len)
-        if num_gpus > 1:
-            accelerator = Accelerator(
-                gradient_accumulation_steps=args.gradient_accumulation_steps,
-                mixed_precision= 'fp16' if args.fp16 else 'no',
-                )
-            print(f"Number of available GPUs: {num_gpus}")
-            print(f"Number of used GPUS: {accelerator.num_processes}")
+        # if num_gpus > 1:
+        #     accelerator = Accelerator(
+        #         gradient_accumulation_steps=args.gradient_accumulation_steps,
+        #         mixed_precision= 'fp16' if args.fp16 else 'no',
+        #         )
+        #     print(f"Number of used GPUS: {accelerator.num_processes}")
 
-        else:
-            accelerator = Accelerator(gradient_accumulation_steps=args.gradient_accumulation_steps)
-        self.accelerator = accelerator
+        # else:
+        #     accelerator = Accelerator(gradient_accumulation_steps=args.gradient_accumulation_steps)
+        # self.accelerator = accelerator
         args.world_size = accelerator.num_processes
         args.local_batch_size = (
             args.per_device_train_batch_size * args.gradient_accumulation_steps * args.num_mini_batches
@@ -193,19 +197,19 @@ class RLOOTrainer(Trainer):
 
         print("initializing 4")
 
-        if self.is_deepspeed_enabled:
-            self.reward_model = prepare_deepspeed(
-                self.reward_model, args.per_device_train_batch_size, args.fp16, args.bf16
-            )
-            self.ref_policy = prepare_deepspeed(
-                self.ref_policy, args.per_device_train_batch_size, args.fp16, args.bf16
-            )
-            self.deepspeed = self.model
-        else:
-            print("initializing 5")
-            self.ref_policy = self.ref_policy.to(self.accelerator.device)
-            print("initializing 6")
-            self.reward_model = self.reward_model.to(self.accelerator.device)
+        # if self.is_deepspeed_enabled:
+        #     self.reward_model = prepare_deepspeed(
+        #         self.reward_model, args.per_device_train_batch_size, args.fp16, args.bf16
+        #     )
+        #     self.ref_policy = prepare_deepspeed(
+        #         self.ref_policy, args.per_device_train_batch_size, args.fp16, args.bf16
+        #     )
+        #     self.deepspeed = self.model
+        # else:
+        #     print("initializing 5")
+        #     self.ref_policy = self.ref_policy.to(self.accelerator.device)
+        #     print("initializing 6")
+        #     self.reward_model = self.reward_model.to(self.accelerator.device)
 
     def get_train_dataloader(self) -> DataLoader:
         return self.dataloader
