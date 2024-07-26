@@ -12,9 +12,11 @@ from transformers import (
     AutoModelForSequenceClassification,
     AutoTokenizer,
     HfArgumentParser,
-    BitsAndBytesConfig,
+    AutoConfig,
+    BitsAndBytesConfig
 )
-from accelerate import Accelerator
+from accelerate import Accelerator, DeepSpeedPlugin
+from accelerate.utils import DummyOptim, DummyScheduler
 
 from trl import ModelConfig, get_quantization_config, get_kbit_device_map, get_peft_config
 from trl.trainer.rloo_trainer import RLOOConfig
@@ -56,33 +58,29 @@ if __name__ == "__main__":
     parser = TrlParser((RLOOConfig, ModelConfig))
     config, model_config = parser.parse_args_into_dataclasses()
     shutil.rmtree(config.output_dir, ignore_errors=True)
-    num_gpus = torch.cuda.device_count()
-    accelerator = Accelerator(config.gradient_accumulation_steps, mixed_precision="fp16", log_with="wandb")
-    device = accelerator.device
     ###############
     # Model & Tokenizer
     ################
-    torch_dtype = (
-        model_config.torch_dtype
-        if model_config.torch_dtype in ["auto", None]
-        else getattr(torch, model_config.torch_dtype)
-    )
-    # quantization_config = get_quantization_config(model_config)
-    # quantization_config = BitsAndBytesConfig(
-    #     load_in_4bit=True,
-    #     bnb_4bit_quant_type="nf4",
-    #     bnb_4bit_compute_dtype=torch_dtype,
-    #     bnb_4bit_use_double_quant=True,
+    # torch_dtype = (
+    #     model_config.torch_dtype
+    #     if model_config.torch_dtype in ["auto", None]
+    #     else getattr(torch, model_config.torch_dtype)
     # )
+    torch_dtype=torch.float16
+    quantization_config = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_compute_dtype=torch_dtype,
+        bnb_4bit_use_double_quant=True,
+    )
     model_kwargs = dict(
         revision=model_config.model_revision,
         trust_remote_code=model_config.trust_remote_code,
         attn_implementation=model_config.attn_implementation,
         torch_dtype=torch_dtype,
         use_cache=False if config.gradient_checkpointing else True,
-        # quantization_config=quantization_config,
+        quantization_config=quantization_config,
     )
-    print("loading tokenizer")
     tokenizer = AutoTokenizer.from_pretrained(
         config.reward_model_path,
         padding_side="left",
@@ -92,19 +90,14 @@ if __name__ == "__main__":
     # tokenizer.add_special_tokens({"pad_token": "[PAD]"})
     if tokenizer.chat_template is None:
        tokenizer.chat_template = SIMPLE_QUERY_CHAT_TEMPLATE
-    print("loading reward model")
     reward_model = RewardModelWrapper(config.reward_model_path)
-    # reward_model = AutoModelForSequenceClassification.from_pretrained(config.reward_model_path, **model_kwargs)
-    print("loading ref policy model")
     ref_policy = AutoModelForCausalLM.from_pretrained(config.sft_model_path)
-    print("loading policy model")
     policy = AutoModelForCausalLM.from_pretrained(config.sft_model_path, **model_kwargs)
     if model_config.use_peft:
         lora_config = get_peft_config(model_config)
         policy = prepare_model_for_kbit_training(policy)
         policy = get_peft_model(policy, lora_config)
 
-    reward_model, ref_policy, policy = accelerator.prepare(reward_model, ref_policy, policy)
     
     ################
     # Dataset
@@ -143,7 +136,6 @@ if __name__ == "__main__":
         reward_model=reward_model,
         train_dataset=prepare_dataset(train_dataset, tokenizer),
         eval_dataset=prepare_dataset(eval_dataset, tokenizer),
-        accelerator=accelerator,
     )
     trainer.train()
     trainer.save_model(config.output_dir)

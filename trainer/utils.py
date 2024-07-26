@@ -1,7 +1,50 @@
-from typing import Tuple
+from typing import Tuple, Union
+from contextlib import contextmanager
 
 import torch
 from trl.trainer.utils import first_true_indices
+
+from accelerate import Accelerator
+from accelerate.utils import is_deepspeed_available
+from deepspeed.runtime.engine import DeepSpeedEngine
+from torch.nn.parallel.distributed import DistributedDataParallel
+from trl.models import PreTrainedModelWrapper
+from trl.models.utils import remove_hooks, add_hooks
+
+if is_deepspeed_available():
+    import deepspeed
+
+@contextmanager
+def unwrap_model_for_generation(
+    model: Union["DistributedDataParallel", "DeepSpeedEngine"], 
+    accelerator: "Accelerator", 
+    is_peft_model: bool = False
+) -> Union["PreTrainedModelWrapper", "DeepSpeedEngine"]:
+    """Context manager to unwrap a model for generation.
+    For ZeRO-3 models, we gather the weights once to speed up generation.
+    """
+    unwrapped_model = accelerator.unwrap_model(model)
+    
+    if is_peft_model:
+        if hasattr(unwrapped_model, 'disable_adapter'):
+            unwrapped_model.disable_adapter()
+        elif hasattr(unwrapped_model, 'base_model') and hasattr(unwrapped_model.base_model, 'disable_adapter'):
+            unwrapped_model.base_model.disable_adapter()
+    
+    if accelerator.state.deepspeed_plugin is not None and accelerator.state.deepspeed_plugin.zero_stage == 3:
+        with deepspeed.zero.GatheredParameters(model.parameters()):
+            remove_hooks(model)
+            yield unwrapped_model
+            add_hooks(model)
+    else:
+        yield unwrapped_model
+    
+    if is_peft_model:
+        if hasattr(unwrapped_model, 'enable_adapter'):
+            unwrapped_model.enable_adapter()
+        elif hasattr(unwrapped_model, 'base_model') and hasattr(unwrapped_model.base_model, 'enable_adapter'):
+            unwrapped_model.base_model.enable_adapter()
+
 
 def get_reward(
     model: torch.nn.Module, query_responses: torch.Tensor, pad_token_id: int, context_length: int

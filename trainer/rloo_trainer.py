@@ -26,7 +26,7 @@ from transformers.integrations import get_reporting_integration_callbacks
 from transformers.trainer import DEFAULT_CALLBACKS, DEFAULT_PROGRESS_CALLBACK
 from transformers.trainer_callback import CallbackHandler, PrinterCallback
 
-from trl.models.utils import unwrap_model_for_generation
+# from trl.models.utils import unwrap_model_for_generation
 from trl.trainer.utils import (
     OnlineTrainerState,
     batch_generation,
@@ -40,7 +40,7 @@ from trl.trainer.utils import (
 )
 from trl.trainer.rloo_trainer import RLOOConfig 
 
-from .utils import get_reward
+from .utils import get_reward, unwrap_model_for_generation
 
 
 INVALID_LOGPROB = 1.0
@@ -59,50 +59,26 @@ class RLOOTrainer(Trainer):
         # less commonly used
         optimizers: Tuple[torch.optim.Optimizer, torch.optim.lr_scheduler.LambdaLR] = (None, None),
         callbacks: Optional[List[TrainerCallback]] = None,
-        accelerator: Optional[Union[str, Accelerator]] = None,
     ) -> None:
-        print("INITIALIZING")
-
         self.args = config
         args = config
         self.tokenizer = tokenizer
-        self.accelerator = accelerator
-        # if accelerator:
-        #     self.policy_model, self.ref_model, self.reward_model = self.accelerator.prepare(
-        #         policy, ref_policy, reward_model
-        #     )
-        # else:
-        self.policy_model = policy
-        self.ref_model = ref_policy
-        self.reward_model = reward_model
 
-        self.policy.generation_config.eos_token_id = (
-            None  # disable `pad_token_id` and `eos_token_id` because we just want to
-        )
-        self.policy.generation_config.pad_token_id = None  # generate tokens without truncation / padding
+        self.ref_policy = ref_policy
+        self.reward_model = reward_model
         self.train_dataset = train_dataset
         self.train_dataset_len = len(train_dataset)
         self.data_collator = data_collator
         self.eval_dataset = eval_dataset
         self.optimizer, self.lr_scheduler = optimizers
 
-        print("initializing 1")
-
         #########
         # calculate various batch sizes
         #########
         if args.total_episodes is None:  # allow the users to define episodes in terms of epochs.
             args.total_episodes = int(args.num_train_epochs * self.train_dataset_len)
-        # if num_gpus > 1:
-        #     accelerator = Accelerator(
-        #         gradient_accumulation_steps=args.gradient_accumulation_steps,
-        #         mixed_precision= 'fp16' if args.fp16 else 'no',
-        #         )
-        #     print(f"Number of used GPUS: {accelerator.num_processes}")
-
-        # else:
-        #     accelerator = Accelerator(gradient_accumulation_steps=args.gradient_accumulation_steps)
-        # self.accelerator = accelerator
+        accelerator = Accelerator(gradient_accumulation_steps=args.gradient_accumulation_steps)
+        self.accelerator = accelerator
         args.world_size = accelerator.num_processes
         args.local_batch_size = (
             args.per_device_train_batch_size * args.gradient_accumulation_steps * args.num_mini_batches
@@ -118,18 +94,15 @@ class RLOOTrainer(Trainer):
         args.num_total_batches = math.ceil(
             args.total_episodes / args.batch_size
         )  # we may train for more than `total_episodes`
-        # time_tensor = torch.tensor(int(time.time()), device=accelerator.device)
-        # time_int = broadcast(time_tensor, 0).item()  # avoid different timestamps across processes
-        # args.run_name = f"{args.exp_name}__{args.seed}__{time_int}"
-        args.run_name = f"{args.exp_name}__{args.seed}"
+        time_tensor = torch.tensor(int(time.time()), device=accelerator.device)
+        time_int = broadcast(time_tensor, 0).item()  # avoid different timestamps across processes
+        args.run_name = f"{args.exp_name}__{args.seed}__{time_int}"
         self.local_seed = args.seed + accelerator.process_index * 100003  # Prime
         if args.num_sample_generations > 0:
             self.sample_generations_freq = max(1, args.num_total_batches // args.num_sample_generations)
         self.local_dataloader_batch_size = exact_div(
             args.local_batch_size, args.rloo_k, "`local_batch_size` must be a multiple of rloo_k"
         )  # RLOO logic: needed because RLOO repeats the same prompt args.rloo_k times
-
-        print("initializing 2")
 
         #########
         # setup model, optimizer, and others
@@ -169,8 +142,6 @@ class RLOOTrainer(Trainer):
             os.makedirs(self.args.output_dir, exist_ok=True)
         self.backup_model = None
 
-        print("initializing 3")
-
         #########
         ### setup dataloader
         #########
@@ -195,21 +166,17 @@ class RLOOTrainer(Trainer):
         )  # no need to shuffle eval dataset
         self.eval_dataloader = accelerator.prepare(self.eval_dataloader)
 
-        print("initializing 4")
-
-        # if self.is_deepspeed_enabled:
-        #     self.reward_model = prepare_deepspeed(
-        #         self.reward_model, args.per_device_train_batch_size, args.fp16, args.bf16
-        #     )
-        #     self.ref_policy = prepare_deepspeed(
-        #         self.ref_policy, args.per_device_train_batch_size, args.fp16, args.bf16
-        #     )
-        #     self.deepspeed = self.model
-        # else:
-        #     print("initializing 5")
-        #     self.ref_policy = self.ref_policy.to(self.accelerator.device)
-        #     print("initializing 6")
-        #     self.reward_model = self.reward_model.to(self.accelerator.device)
+        if self.is_deepspeed_enabled:
+            self.reward_model = prepare_deepspeed(
+                self.reward_model, args.per_device_train_batch_size, args.fp16, args.bf16
+            )
+            self.ref_policy = prepare_deepspeed(
+                self.ref_policy, args.per_device_train_batch_size, args.fp16, args.bf16
+            )
+            self.deepspeed = self.model
+        else:
+            self.ref_policy = self.ref_policy.to(self.accelerator.device)
+            self.reward_model = self.reward_model.to(self.accelerator.device)
 
     def get_train_dataloader(self) -> DataLoader:
         return self.dataloader
@@ -283,7 +250,7 @@ class RLOOTrainer(Trainer):
             self.lr_scheduler.step()
             data = next(iter_dataloader)
             with torch.no_grad():
-                queries = data["input_ids"].to(device)
+                queries = data["input_ids"].to(device).requires_grad_(True)
                 queries = queries.repeat(args.rloo_k, 1)
                 context_length = queries.shape[1]
                 query_responses = []
@@ -293,14 +260,15 @@ class RLOOTrainer(Trainer):
                 ref_logprobs = []
                 scores = []
                 sequence_lengths = []
-                with unwrap_model_for_generation(model, self.accelerator) as unwrapped_model:
-                    query_responses, logitss = batch_generation(
-                        unwrapped_model,
-                        queries,
-                        args.local_rollout_forward_batch_size,
-                        tokenizer.pad_token_id,
-                        generation_config,
-                    )
+                # with unwrap_model_for_generation(model, self.accelerator, is_peft_model=True) as unwrapped_model:
+                query_responses, logitss = batch_generation(
+                    # unwrapped_model,
+                    model,
+                    queries,
+                    args.local_rollout_forward_batch_size,
+                    tokenizer.pad_token_id,
+                    generation_config,
+                )
 
                 for i in range(0, queries.shape[0], args.local_rollout_forward_batch_size):
                     query = queries[i : i + args.local_rollout_forward_batch_size]
@@ -505,45 +473,46 @@ class RLOOTrainer(Trainer):
         )
 
         table = defaultdict(list)
-        with unwrap_model_for_generation(self.model, self.accelerator) as unwrapped_model:
-            for batch in self.eval_dataloader:
-                query = batch["input_ids"]
-                with torch.no_grad():
-                    context_length = query.shape[1]
-                    query_response, _ = batch_generation(
-                        unwrapped_model,
-                        query,
-                        query.shape[0],
-                        tokenizer.pad_token_id,
-                        generation_config,
+        # with unwrap_model_for_generation(self.model, self.accelerator, is_peft_model=True) as unwrapped_model:
+        for batch in self.eval_dataloader:
+            query = batch["input_ids"]
+            with torch.no_grad():
+                context_length = query.shape[1]
+                query_response, _ = batch_generation(
+                    # unwrapped_model,
+                    self.model,
+                    query,
+                    query.shape[0],
+                    tokenizer.pad_token_id,
+                    generation_config,
+                )
+                response = query_response[:, context_length:]
+                postprocessed_response = response
+                if args.stop_token_id is not None:  # handle the edge case when stop_token_id exists but is 0
+                    postprocessed_response = truncate_response(
+                        args.stop_token_id, tokenizer.pad_token_id, response
                     )
-                    response = query_response[:, context_length:]
-                    postprocessed_response = response
-                    if args.stop_token_id is not None:  # handle the edge case when stop_token_id exists but is 0
-                        postprocessed_response = truncate_response(
-                            args.stop_token_id, tokenizer.pad_token_id, response
-                        )
-                    table["query"].extend(gather_object(tokenizer.batch_decode(query, skip_special_tokens=True)))
-                    table["model response"].extend(gather_object(tokenizer.batch_decode(postprocessed_response)))
+                table["query"].extend(gather_object(tokenizer.batch_decode(query, skip_special_tokens=True)))
+                table["model response"].extend(gather_object(tokenizer.batch_decode(postprocessed_response)))
 
-                    postprocessed_query_response = torch.cat((query, postprocessed_response), 1)
-                    response_string = [self.tokenizer.decode(r) for r in postprocessed_response.tolist()]
-                    query_string = [self.tokenizer.decode(q) for q in query.tolist()]
-                    messages = [
-                        [
-                            {'role': 'user', 'content': q},
-                            {'role': 'assistant', 'content': r},
-                        ]
-                        for q, r in zip(query_string, response_string)
+                postprocessed_query_response = torch.cat((query, postprocessed_response), 1)
+                response_string = [self.tokenizer.decode(r) for r in postprocessed_response.tolist()]
+                query_string = [self.tokenizer.decode(q) for q in query.tolist()]
+                messages = [
+                    [
+                        {'role': 'user', 'content': q},
+                        {'role': 'assistant', 'content': r},
                     ]
-                    postprocessed_query_response_for_rm = self.tokenizer.apply_chat_template(messages, return_tensors="pt", padding=True).to(self.accelerator.device)
-                    _, score, _ = get_reward(
-                        self.reward_model, postprocessed_query_response_for_rm, tokenizer.pad_token_id, context_length
-                    )
-                    table["score"].extend(self.accelerator.gather(score).float().cpu().numpy())
+                    for q, r in zip(query_string, response_string)
+                ]
+                postprocessed_query_response_for_rm = self.tokenizer.apply_chat_template(messages, return_tensors="pt", padding=True).to(self.accelerator.device)
+                _, score, _ = get_reward(
+                    self.reward_model, postprocessed_query_response_for_rm, tokenizer.pad_token_id, context_length
+                )
+                table["score"].extend(self.accelerator.gather(score).float().cpu().numpy())
 
-                if sampling:
-                    break
+            if sampling:
+                break
         df = pd.DataFrame(table)
         if self.accelerator.process_index == 0:
             print_rich_table(df.iloc[0 : 0 + 5])
