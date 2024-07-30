@@ -32,10 +32,13 @@ import psutil
 
 """
 python train/rloo.py    \
+
+accelerate launch --config_file train/deepspeed_zero3_1.yaml train/rloo.py     \
     --model_name_or_path=meta-llama/Meta-Llama-3-8B     \
     --sft_model_path=meta-llama/Meta-Llama-3-8B     \
+    --reward_model_path RLHFlow/ArmoRM-Llama3-8B-v0.1 \
     --per_device_train_batch_size 4     \
-    --learning_rate 1e-3     \
+    --learning_rate 1e-4     \
     --gradient_accumulation_steps 2     \
     --gradient_checkpointing=True     \
     --logging_steps 10     \
@@ -50,7 +53,7 @@ python train/rloo.py    \
     --lora_r=16     \
     --load_in_4bit     \
     --lora_alpha=16    \
-    --reward_model_path RLHFlow/ArmoRM-Llama3-8B-v0.1 \
+    
 """
 
 

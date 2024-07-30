@@ -1,3 +1,5 @@
+import os
+import gc
 from typing import Tuple, Union
 from contextlib import contextmanager
 
@@ -11,8 +13,30 @@ from torch.nn.parallel.distributed import DistributedDataParallel
 from trl.models import PreTrainedModelWrapper
 from trl.models.utils import remove_hooks, add_hooks
 
+from transformers import AutoModelForCausalLM
+from peft import PeftConfig, PeftModel
+
 if is_deepspeed_available():
     import deepspeed
+
+import torch
+from safetensors.torch import save_file, load_file
+
+def get_generation_model(base_model_name, adapter_path, device='cuda'):
+    # Load the base model without quantization
+    base_model = AutoModelForCausalLM.from_pretrained(
+        base_model_name,
+        torch_dtype=torch.float16,  # or whatever dtype you prefer for generation
+        device_map=device
+    )
+    
+    # Load the PEFT adapter
+    generation_model = PeftModel.from_pretrained(base_model, adapter_path)
+    
+    # Optionally, merge the adapter weights into the base model
+    generation_model = generation_model.merge_and_unload()
+    
+    return generation_model.to(device)
 
 @contextmanager
 def unwrap_model_for_generation(
@@ -20,30 +44,20 @@ def unwrap_model_for_generation(
     accelerator: "Accelerator", 
     is_peft_model: bool = False
 ) -> Union["PreTrainedModelWrapper", "DeepSpeedEngine"]:
-    """Context manager to unwrap a model for generation.
-    For ZeRO-3 models, we gather the weights once to speed up generation.
-    """
-    unwrapped_model = accelerator.unwrap_model(model)
-    
     if is_peft_model:
-        if hasattr(unwrapped_model, 'disable_adapter'):
-            unwrapped_model.disable_adapter()
-        elif hasattr(unwrapped_model, 'base_model') and hasattr(unwrapped_model.base_model, 'disable_adapter'):
-            unwrapped_model.base_model.disable_adapter()
-    
-    if accelerator.state.deepspeed_plugin is not None and accelerator.state.deepspeed_plugin.zero_stage == 3:
-        with deepspeed.zero.GatheredParameters(model.parameters()):
-            remove_hooks(model)
-            yield unwrapped_model
-            add_hooks(model)
-    else:
-        yield unwrapped_model
-    
-    if is_peft_model:
-        if hasattr(unwrapped_model, 'enable_adapter'):
-            unwrapped_model.enable_adapter()
-        elif hasattr(unwrapped_model, 'base_model') and hasattr(unwrapped_model.base_model, 'enable_adapter'):
-            unwrapped_model.base_model.enable_adapter()
+        base_model_name = model.config._name_or_path  # Adjust this if needed
+        adapter_path = model.peft_config['default'].path
+        print(f"Base model name: {base_model_name}")
+        print(f"Adapter path: {adapter_path}")
+        
+        # Load the generation model on a single GPU
+        generation_model = get_generation_model(base_model_name, adapter_path)
+        
+        yield generation_model
+        
+        torch.cuda.empty_cache()
+        del generation_model
+        gc.collect()
 
 
 def get_reward(

@@ -250,7 +250,7 @@ class RLOOTrainer(Trainer):
             self.lr_scheduler.step()
             data = next(iter_dataloader)
             with torch.no_grad():
-                queries = data["input_ids"].to(device).requires_grad_(True)
+                queries = data["input_ids"].to(device)
                 queries = queries.repeat(args.rloo_k, 1)
                 context_length = queries.shape[1]
                 query_responses = []
@@ -260,15 +260,14 @@ class RLOOTrainer(Trainer):
                 ref_logprobs = []
                 scores = []
                 sequence_lengths = []
-                # with unwrap_model_for_generation(model, self.accelerator, is_peft_model=True) as unwrapped_model:
-                query_responses, logitss = batch_generation(
-                    # unwrapped_model,
-                    model,
-                    queries,
-                    args.local_rollout_forward_batch_size,
-                    tokenizer.pad_token_id,
-                    generation_config,
-                )
+                with unwrap_model_for_generation(model, self.accelerator, is_peft_model=True) as unwrapped_model:
+                    query_responses, logitss = batch_generation(
+                        unwrapped_model,
+                        queries,
+                        args.local_rollout_forward_batch_size,
+                        tokenizer.pad_token_id,
+                        generation_config,
+                    )
 
                 for i in range(0, queries.shape[0], args.local_rollout_forward_batch_size):
                     query = queries[i : i + args.local_rollout_forward_batch_size]
@@ -473,46 +472,46 @@ class RLOOTrainer(Trainer):
         )
 
         table = defaultdict(list)
-        # with unwrap_model_for_generation(self.model, self.accelerator, is_peft_model=True) as unwrapped_model:
-        for batch in self.eval_dataloader:
-            query = batch["input_ids"]
-            with torch.no_grad():
-                context_length = query.shape[1]
-                query_response, _ = batch_generation(
-                    # unwrapped_model,
-                    self.model,
-                    query,
-                    query.shape[0],
-                    tokenizer.pad_token_id,
-                    generation_config,
-                )
-                response = query_response[:, context_length:]
-                postprocessed_response = response
-                if args.stop_token_id is not None:  # handle the edge case when stop_token_id exists but is 0
-                    postprocessed_response = truncate_response(
-                        args.stop_token_id, tokenizer.pad_token_id, response
+        with unwrap_model_for_generation(self.model, self.accelerator, is_peft_model=True) as unwrapped_model:
+            for batch in self.eval_dataloader:
+                query = batch["input_ids"]
+                with torch.no_grad():
+                    context_length = query.shape[1]
+                    query_response, _ = batch_generation(
+                        # unwrapped_model,
+                        self.model,
+                        query,
+                        query.shape[0],
+                        tokenizer.pad_token_id,
+                        generation_config,
                     )
-                table["query"].extend(gather_object(tokenizer.batch_decode(query, skip_special_tokens=True)))
-                table["model response"].extend(gather_object(tokenizer.batch_decode(postprocessed_response)))
+                    response = query_response[:, context_length:]
+                    postprocessed_response = response
+                    if args.stop_token_id is not None:  # handle the edge case when stop_token_id exists but is 0
+                        postprocessed_response = truncate_response(
+                            args.stop_token_id, tokenizer.pad_token_id, response
+                        )
+                    table["query"].extend(gather_object(tokenizer.batch_decode(query, skip_special_tokens=True)))
+                    table["model response"].extend(gather_object(tokenizer.batch_decode(postprocessed_response)))
 
-                postprocessed_query_response = torch.cat((query, postprocessed_response), 1)
-                response_string = [self.tokenizer.decode(r) for r in postprocessed_response.tolist()]
-                query_string = [self.tokenizer.decode(q) for q in query.tolist()]
-                messages = [
-                    [
-                        {'role': 'user', 'content': q},
-                        {'role': 'assistant', 'content': r},
+                    postprocessed_query_response = torch.cat((query, postprocessed_response), 1)
+                    response_string = [self.tokenizer.decode(r) for r in postprocessed_response.tolist()]
+                    query_string = [self.tokenizer.decode(q) for q in query.tolist()]
+                    messages = [
+                        [
+                            {'role': 'user', 'content': q},
+                            {'role': 'assistant', 'content': r},
+                        ]
+                        for q, r in zip(query_string, response_string)
                     ]
-                    for q, r in zip(query_string, response_string)
-                ]
-                postprocessed_query_response_for_rm = self.tokenizer.apply_chat_template(messages, return_tensors="pt", padding=True).to(self.accelerator.device)
-                _, score, _ = get_reward(
-                    self.reward_model, postprocessed_query_response_for_rm, tokenizer.pad_token_id, context_length
-                )
-                table["score"].extend(self.accelerator.gather(score).float().cpu().numpy())
+                    postprocessed_query_response_for_rm = self.tokenizer.apply_chat_template(messages, return_tensors="pt", padding=True).to(self.accelerator.device)
+                    _, score, _ = get_reward(
+                        self.reward_model, postprocessed_query_response_for_rm, tokenizer.pad_token_id, context_length
+                    )
+                    table["score"].extend(self.accelerator.gather(score).float().cpu().numpy())
 
-            if sampling:
-                break
+                if sampling:
+                    break
         df = pd.DataFrame(table)
         if self.accelerator.process_index == 0:
             print_rich_table(df.iloc[0 : 0 + 5])
