@@ -10,7 +10,7 @@ import pandas as pd
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from accelerate import Accelerator, DeepSpeedPlugin
+from accelerate import Accelerator
 from accelerate.utils import broadcast, gather_object
 from datasets import Dataset
 from torch.utils.data import DataLoader
@@ -26,7 +26,7 @@ from transformers.integrations import get_reporting_integration_callbacks
 from transformers.trainer import DEFAULT_CALLBACKS, DEFAULT_PROGRESS_CALLBACK
 from transformers.trainer_callback import CallbackHandler, PrinterCallback
 
-# from trl.models.utils import unwrap_model_for_generation
+from trl.models.utils import unwrap_model_for_generation
 from trl.trainer.utils import (
     OnlineTrainerState,
     batch_generation,
@@ -34,16 +34,18 @@ from trl.trainer.utils import (
     exact_div,
     first_true_indices,
     forward,
+    # get_reward,
     prepare_deepspeed,
     print_rich_table,
     truncate_response,
 )
-from trl.trainer.rloo_trainer import RLOOConfig 
+from trl.trainer.rloo_config import RLOOConfig
 
-from .utils import get_reward, unwrap_model_for_generation
+from .utils import get_reward
 
 
 INVALID_LOGPROB = 1.0
+
 
 class RLOOTrainer(Trainer):
     def __init__(
@@ -63,6 +65,12 @@ class RLOOTrainer(Trainer):
         self.args = config
         args = config
         self.tokenizer = tokenizer
+        self.policy = policy
+
+        self.policy.generation_config.eos_token_id = (
+            None  # disable `pad_token_id` and `eos_token_id` because we just want to
+        )
+        self.policy.generation_config.pad_token_id = None  # generate tokens without truncation / padding
 
         self.ref_policy = ref_policy
         self.reward_model = reward_model
@@ -260,7 +268,7 @@ class RLOOTrainer(Trainer):
                 ref_logprobs = []
                 scores = []
                 sequence_lengths = []
-                with unwrap_model_for_generation(model, self.accelerator, is_peft_model=True) as unwrapped_model:
+                with unwrap_model_for_generation(model, self.accelerator) as unwrapped_model:
                     query_responses, logitss = batch_generation(
                         unwrapped_model,
                         queries,
@@ -472,14 +480,13 @@ class RLOOTrainer(Trainer):
         )
 
         table = defaultdict(list)
-        with unwrap_model_for_generation(self.model, self.accelerator, is_peft_model=True) as unwrapped_model:
+        with unwrap_model_for_generation(self.model, self.accelerator) as unwrapped_model:
             for batch in self.eval_dataloader:
                 query = batch["input_ids"]
                 with torch.no_grad():
                     context_length = query.shape[1]
                     query_response, _ = batch_generation(
-                        # unwrapped_model,
-                        self.model,
+                        unwrapped_model,
                         query,
                         query.shape[0],
                         tokenizer.pad_token_id,
@@ -494,7 +501,7 @@ class RLOOTrainer(Trainer):
                     table["query"].extend(gather_object(tokenizer.batch_decode(query, skip_special_tokens=True)))
                     table["model response"].extend(gather_object(tokenizer.batch_decode(postprocessed_response)))
 
-                    postprocessed_query_response = torch.cat((query, postprocessed_response), 1)
+                    # postprocessed_query_response = torch.cat((query, postprocessed_response), 1)
                     response_string = [self.tokenizer.decode(r) for r in postprocessed_response.tolist()]
                     query_string = [self.tokenizer.decode(q) for q in query.tolist()]
                     messages = [

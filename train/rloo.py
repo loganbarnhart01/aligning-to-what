@@ -5,30 +5,21 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import shutil
 
-import torch
 from datasets import load_dataset
 from transformers import (
     AutoModelForCausalLM,
-    AutoModelForSequenceClassification,
     AutoTokenizer,
-    HfArgumentParser,
-    AutoConfig,
-    BitsAndBytesConfig
 )
-from accelerate import Accelerator, DeepSpeedPlugin
-from accelerate.utils import DummyOptim, DummyScheduler
 
-from trl import ModelConfig, get_quantization_config, get_kbit_device_map, get_peft_config
+from trl import ModelConfig, get_peft_config
 from trl.trainer.rloo_trainer import RLOOConfig
 from trl.trainer.utils import SIMPLE_QUERY_CHAT_TEMPLATE
 from trl.commands.cli_utils import TrlParser
-from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
+from peft import get_peft_model
 
 from trainer.rloo_trainer import RLOOTrainer
-# from trl.trainer.rloo_trainer import RLOOTrainer
 from models.reward_model import RewardModelWrapper
 
-import psutil
 
 """
 python train/rloo.py    \
@@ -53,7 +44,10 @@ accelerate launch --config_file train/deepspeed_zero3_1.yaml train/rloo.py     \
     --lora_r=16     \
     --load_in_4bit     \
     --lora_alpha=16    \
-    
+
+# No quantization. Just mixed precisiona and LoRA    
+accelerate launch --config_file train/deepspeed_zero3_2.yaml train/rloo.py         --model_name_or_path=meta-llama/Meta-Llama-3-8B         --sft_model_path=meta-llama/Meta-Llama-3-8B         --reward_model_path RLHFlow/ArmoRM-Llama3-8B-v0.1     --per_device_train_batch_size 4         --learning_rate 1e-4         --gradient_accumulation_steps 2         --gradient_checkpointing=True         --logging_steps 10         --eval_steps 500         --output_dir=/home/logan/covert-bias/weights/rloo_anthropic_hh_1         --optim sgd         --warmup_steps 150         --report_to wandb         --logging_first_step         --no_remove_unused_columns         --use_peft         --lora_r=16         --lora_alpha=16 --per_device_eval_batch_size 4 --fp16
+
 """
 
 
@@ -63,45 +57,21 @@ if __name__ == "__main__":
     shutil.rmtree(config.output_dir, ignore_errors=True)
     ###############
     # Model & Tokenizer
-    ################
-    # torch_dtype = (
-    #     model_config.torch_dtype
-    #     if model_config.torch_dtype in ["auto", None]
-    #     else getattr(torch, model_config.torch_dtype)
-    # )
-    torch_dtype=torch.float16
-    quantization_config = BitsAndBytesConfig(
-        load_in_4bit=True,
-        bnb_4bit_quant_type="nf4",
-        bnb_4bit_compute_dtype=torch_dtype,
-        bnb_4bit_use_double_quant=True,
-    )
-    model_kwargs = dict(
-        revision=model_config.model_revision,
-        trust_remote_code=model_config.trust_remote_code,
-        attn_implementation=model_config.attn_implementation,
-        torch_dtype=torch_dtype,
-        use_cache=False if config.gradient_checkpointing else True,
-        quantization_config=quantization_config,
-    )
+    ###############
     tokenizer = AutoTokenizer.from_pretrained(
         config.reward_model_path,
         padding_side="left",
         trust_remote_code=True,
-        # local_files_only=True,
     )
-    # tokenizer.add_special_tokens({"pad_token": "[PAD]"})
     if tokenizer.chat_template is None:
        tokenizer.chat_template = SIMPLE_QUERY_CHAT_TEMPLATE
     reward_model = RewardModelWrapper(config.reward_model_path)
     ref_policy = AutoModelForCausalLM.from_pretrained(config.sft_model_path)
-    policy = AutoModelForCausalLM.from_pretrained(config.sft_model_path, **model_kwargs)
+    policy = AutoModelForCausalLM.from_pretrained(config.sft_model_path)
     if model_config.use_peft:
         lora_config = get_peft_config(model_config)
-        policy = prepare_model_for_kbit_training(policy)
         policy = get_peft_model(policy, lora_config)
 
-    
     ################
     # Dataset
     ################

@@ -1,64 +1,9 @@
-import os
-import gc
-from typing import Tuple, Union
-from contextlib import contextmanager
+from typing import Tuple
 
 import torch
 from trl.trainer.utils import first_true_indices
 
-from accelerate import Accelerator
-from accelerate.utils import is_deepspeed_available
-from deepspeed.runtime.engine import DeepSpeedEngine
-from torch.nn.parallel.distributed import DistributedDataParallel
-from trl.models import PreTrainedModelWrapper
-from trl.models.utils import remove_hooks, add_hooks
-
-from transformers import AutoModelForCausalLM
-from peft import PeftConfig, PeftModel
-
-if is_deepspeed_available():
-    import deepspeed
-
 import torch
-from safetensors.torch import save_file, load_file
-
-def get_generation_model(base_model_name, adapter_path, device='cuda'):
-    # Load the base model without quantization
-    base_model = AutoModelForCausalLM.from_pretrained(
-        base_model_name,
-        torch_dtype=torch.float16,  # or whatever dtype you prefer for generation
-        device_map=device
-    )
-    
-    # Load the PEFT adapter
-    generation_model = PeftModel.from_pretrained(base_model, adapter_path)
-    
-    # Optionally, merge the adapter weights into the base model
-    generation_model = generation_model.merge_and_unload()
-    
-    return generation_model.to(device)
-
-@contextmanager
-def unwrap_model_for_generation(
-    model: Union["DistributedDataParallel", "DeepSpeedEngine"], 
-    accelerator: "Accelerator", 
-    is_peft_model: bool = False
-) -> Union["PreTrainedModelWrapper", "DeepSpeedEngine"]:
-    if is_peft_model:
-        base_model_name = model.config._name_or_path  # Adjust this if needed
-        adapter_path = model.peft_config['default'].path
-        print(f"Base model name: {base_model_name}")
-        print(f"Adapter path: {adapter_path}")
-        
-        # Load the generation model on a single GPU
-        generation_model = get_generation_model(base_model_name, adapter_path)
-        
-        yield generation_model
-        
-        torch.cuda.empty_cache()
-        del generation_model
-        gc.collect()
-
 
 def get_reward(
     model: torch.nn.Module, query_responses: torch.Tensor, pad_token_id: int, context_length: int
