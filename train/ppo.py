@@ -16,6 +16,7 @@ from trl.trainer.utils import SIMPLE_QUERY_CHAT_TEMPLATE
 from trl.commands.cli_utils import TrlParser
 
 from trainer.ppo_trainer import PPOv2Trainer
+from models.reward_model import RewardModelWrapper
 
 """
 python train/ppo.py \
@@ -68,7 +69,7 @@ if __name__ == "__main__":
     if tokenizer.chat_template is None:
         tokenizer.chat_template = SIMPLE_QUERY_CHAT_TEMPLATE
     value_model = AutoModelForSequenceClassification.from_pretrained(config.sft_model_path, num_labels=1, local_files_only=True, **model_kwargs)
-    reward_model = AutoModelForSequenceClassification.from_pretrained(config.reward_model_path, num_labels=1, local_files_only=True)
+    reward_model = RewardModelWrapper(config.reward_model_path)
     ref_policy = AutoModelForCausalLM.from_pretrained(config.sft_model_path, local_files_only=True)
     policy = AutoModelForCausalLM.from_pretrained(config.sft_model_path, local_files_only=True, **model_kwargs)
     if model_config.use_peft:
