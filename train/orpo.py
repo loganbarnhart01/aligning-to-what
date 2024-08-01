@@ -82,9 +82,7 @@ if __name__ == "__main__":
     # Model & Tokenizer
     ################
     model = AutoModelForCausalLM.from_pretrained(model_config.model_name_or_path, use_cache=False if orpo_args.gradient_checkpointing else True,)
-    if model_config.use_peft:
-        lora_config = get_peft_config(model_config)
-        model = get_peft_model(model, lora_config)
+    peft_config = get_peft_config(model_config)
     tokenizer = AutoTokenizer.from_pretrained(model_config.model_name_or_path)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
@@ -149,7 +147,7 @@ if __name__ == "__main__":
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
         tokenizer=tokenizer,
-        peft_config=get_peft_config(model_config),
+        peft_config=peft_config,
     )
 
     # train and save the model
