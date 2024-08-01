@@ -64,7 +64,7 @@ from datasets import load_dataset
 from transformers import AutoModelForCausalLM, AutoTokenizer, HfArgumentParser
 
 from trl import ModelConfig, ORPOConfig, ORPOTrainer, get_peft_config, get_quantization_config, get_kbit_device_map, get_peft_config
-
+from peft import get_peft_model
 
 @dataclass
 class ScriptArguments:
@@ -81,28 +81,14 @@ if __name__ == "__main__":
     ################
     # Model & Tokenizer
     ################
-    torch_dtype = (
-        model_config.torch_dtype
-        if model_config.torch_dtype in ["auto", None]
-        else getattr(torch, model_config.torch_dtype)
-    )
-    quantization_config = get_quantization_config(model_config)
-    model_kwargs = dict(
-        revision=model_config.model_revision,
-        trust_remote_code=model_config.trust_remote_code,
-        attn_implementation=model_config.attn_implementation,
-        torch_dtype=torch_dtype,
-        use_cache=False if orpo_args.gradient_checkpointing else True,
-        device_map=get_kbit_device_map() if quantization_config is not None else None,
-        quantization_config=quantization_config,
-    )
-    model = AutoModelForCausalLM.from_pretrained(model_config.model_name_or_path, **model_kwargs)
-    peft_config = get_peft_config(model_config)
+    model = AutoModelForCausalLM.from_pretrained(model_config.model_name_or_path, use_cache=False if orpo_args.gradient_checkpointing else True,)
+    if model_config.use_peft:
+        lora_config = get_peft_config(model_config)
+        model = get_peft_model(model, lora_config)
     tokenizer = AutoTokenizer.from_pretrained(model_config.model_name_or_path)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
         model.config.pad_token_id = model.config.eos_token_id
-
 
     ################
     # Dataset
