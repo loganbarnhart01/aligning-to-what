@@ -6,21 +6,20 @@ from transformers import (
     AutoModelForCausalLM,
     AutoModelForSequenceClassification,
     AutoTokenizer,
-    HfArgumentParser,
 )
-from peft import get_peft_model, LoraConfig
+from peft import get_peft_model
 
 
-from trl import ModelConfig, get_quantization_config, get_kbit_device_map, get_peft_config
+from trl import ModelConfig, get_peft_config
 from trl.trainer.ppov2_trainer import PPOv2Config, PPOv2Trainer
 from trl.trainer.utils import SIMPLE_QUERY_CHAT_TEMPLATE
 from trl.commands.cli_utils import TrlParser
 
 """
 python train/ppo.py \
-    --model_name_or_path <path_to_llama> \
-    --sft_model_path <path_to_llama> \
-    --reward_model_path <path_to_ArmoRM> \
+    --model_name_or_path meta-llama/Meta-Llama-3-8B \
+    --sft_model_path meta-llama/Meta-Llama-3-8B \
+    --reward_model_path RLHFlow/ArmoRM-Llama3-8B-v0.1 \
     --output_dir <output_dir> \
     --per_device_train_batch_size 8 \
     --total_episodes 10000\
@@ -51,15 +50,12 @@ if __name__ == "__main__":
             if model_config.torch_dtype in ["auto", None]
             else getattr(torch, model_config.torch_dtype)
             )
-    quantization_config = get_quantization_config(model_config)
     model_kwargs = dict(
             revision=model_config.model_revision,
             trust_remote_code=model_config.trust_remote_code,
             attn_implementation=model_config.attn_implementation,
             torch_dtype=torch_dtype,
             use_cache=False if config.gradient_checkpointing else True,
-            device_map=get_kbit_device_map() if quantization_config is not None else None,
-            quantization_config=quantization_config,
             )
     tokenizer = AutoTokenizer.from_pretrained(
         config.reward_model_path,
@@ -76,9 +72,7 @@ if __name__ == "__main__":
     if model_config.use_peft:
         lora_config = get_peft_config(model_config)
         value_model = get_peft_model(value_model, lora_config)
-        print("Loaded PEFT Value model")
         policy = get_peft_model(policy, lora_config)
-    print("Loaded peft models")
     ################
     # Dataset
     ################
