@@ -11,9 +11,11 @@ from peft import get_peft_model
 
 
 from trl import ModelConfig, get_peft_config
-from trl.trainer.ppov2_trainer import PPOv2Config, PPOv2Trainer
+from trl.trainer.ppov2_trainer import PPOv2Config
 from trl.trainer.utils import SIMPLE_QUERY_CHAT_TEMPLATE
 from trl.commands.cli_utils import TrlParser
+
+from trainer.ppo_trainer import PPOv2Trainer
 
 """
 python train/ppo.py \
