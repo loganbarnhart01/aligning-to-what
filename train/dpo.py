@@ -32,7 +32,7 @@ python examples/scripts/dpo.py \
 # peft:
 python examples/scripts/dpo.py \
     --dataset_name=trl-internal-testing/hh-rlhf-helpful-base-trl-style \
-    --model_name_or_path=gpt2 \
+    --model_name_or_path=meta-llama/Meta-Llama-3-8B \
     --per_device_train_batch_size 4 \
     --learning_rate 1e-3 \
     --gradient_accumulation_steps 1 \
@@ -42,7 +42,7 @@ python examples/scripts/dpo.py \
     --optim rmsprop \
     --warmup_steps 150 \
     --report_to wandb \
-    --bf16 \
+    --fp16 \
     --logging_first_step \
     --no_remove_unused_columns \
     --use_peft \
@@ -50,8 +50,6 @@ python examples/scripts/dpo.py \
     --lora_alpha=16
 """
 import os
-os.environ['TRANSFORMERS_CACHE'] = '/scratch/alpine/reak3132/.cache'
-os.environ['HF_HOME'] =  '/scratch/alpine/reak3132/.cache'
 
 import logging
 import multiprocessing
@@ -142,7 +140,7 @@ if __name__ == "__main__":
     ################
     # Dataset
     ################
-    ds = load_dataset(args.dataset_name)
+    ds = load_dataset("trl-internal-testing/hh-rlhf-helpful-base-trl-style")
     if args.sanity_check:
         for key in ds:
             ds[key] = ds[key].select(range(50))
