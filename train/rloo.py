@@ -22,9 +22,7 @@ from models.reward_model import RewardModelWrapper
 
 
 """
-python train/rloo.py    \
-
-accelerate launch --config_file train/deepspeed_zero3_1.yaml train/rloo.py     \
+accelerate launch --config_file train/deepspeed_zero3.yaml train/rloo.py     \
     --model_name_or_path=meta-llama/Meta-Llama-3-8B     \
     --sft_model_path=meta-llama/Meta-Llama-3-8B     \
     --reward_model_path RLHFlow/ArmoRM-Llama3-8B-v0.1 \
@@ -44,9 +42,8 @@ accelerate launch --config_file train/deepspeed_zero3_1.yaml train/rloo.py     \
     --lora_r=16     \
     --load_in_4bit     \
     --lora_alpha=16    \
+    --fp16      \
 
-# No quantization. Just mixed precisiona and LoRA    
-accelerate launch --config_file train/deepspeed_zero3_2.yaml train/rloo.py         --model_name_or_path=meta-llama/Meta-Llama-3-8B         --sft_model_path=meta-llama/Meta-Llama-3-8B         --reward_model_path RLHFlow/ArmoRM-Llama3-8B-v0.1     --per_device_train_batch_size 4         --learning_rate 1e-4         --gradient_accumulation_steps 2         --gradient_checkpointing=True         --logging_steps 10         --eval_steps 500         --output_dir=/home/logan/covert-bias/weights/rloo_anthropic_hh_1         --optim sgd         --warmup_steps 150         --report_to wandb         --logging_first_step         --no_remove_unused_columns         --use_peft         --lora_r=16         --lora_alpha=16 --per_device_eval_batch_size 4 --fp16
 
 """
 
