@@ -8,6 +8,8 @@ from torch.utils.data import Dataset, DataLoader
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from tqdm import tqdm
 
+from data import ATTRIBUTES_ALL
+
 working_dir = os.path.dirname(os.path.abspath(__file__))
 
 class TextDataset(Dataset):
@@ -61,7 +63,7 @@ def main(args):
     
     prompt_association_scores = {prompt_template : [] for prompt_template in prompt_templates}
 
-    adjectives = ['aggressive', 'sensual', 'alert', 'shrewd', 'arrogant', 'athletic', 'ambitious', 'slovenly', 'brilliant', 'clannish', 'argumentative', 'sly', 'conceited', 'sophisticated', 'cowardly', 'easy-going', 'artistic', 'sportsmanlike', 'evasive', 'education-oriented', 'boastful', 'straightforward', 'faithful' , 'conservative', 'stubborn', 'frivolous', 'egotistic', 'conventional', 'stupid', 'generous', 'emotional', 'courteous', 'suave', 'gluttonous', 'festive', 'cruel', 'suggestible', 'gregarious', 'deceitful', 'superstitious', 'happy-go-lucky', 'idealistic', 'efficient', 'suspicious', 'humorless', 'inventive', 'familistic', 'talkative', 'jovial', 'logical', 'tradition-oriented', 'kind', 'militaristic', 'loud', 'out-going', 'grasping', 'meditative', 'patriotic', 'honest', 'naïve', 'proper', 'ignorant', 'treacherous', 'neat', 'rustic', 'imaginative', 'unreliable', 'persistent', 'sex-minded', 'imitative', 'witty', 'physically dirty', 'uneducated', 'impulsive', 'ponderous', 'individualistic', 'quarrelsome', 'industrious', 'radical', 'intelligent', 'revengeful', 'lazy', 'rude', 'materialistic', 'sensitive', 'mercenary', 'stolid', 'methodical', 'musical', 'nationalistic', 'ostentatious', 'passionate', 'pleasure-loving', 'practical', 'progressive', 'pugnacious', 'quick-tempered', 'quiet', 'reserved', 'religious', 'scientific-minded', 'competitive', 'happy'] 
+    adjectives = ATTRIBUTES_ALL
 
     tokenizer = AutoTokenizer.from_pretrained(args.model_path)
     tokenizer.pad_token = tokenizer.eos_token

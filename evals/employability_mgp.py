@@ -8,6 +8,8 @@ from torch.utils.data import Dataset, DataLoader
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from tqdm import tqdm
 
+from data import GSS_OCCUPATIONS
+
 working_dir = os.path.dirname(os.path.abspath(__file__))
 
 class TextDataset(Dataset):
@@ -61,8 +63,7 @@ def main(args):
     
     prompt_association_scores = {prompt_template : [] for prompt_template in prompt_templates}
 
-    roles = "academic, accountant, actor, actress, administrator, analyst, architect, artist, assistant, astronaut, athlete, atten- dant, auditor, author, broker, chef, chief, cleaner, clergy, clerk, coach, collector, comedian, commander, composer, cook, counselor, curator, dentist, designer, detective, developer, diplomat, director, doctor, drawer, driver, economist, editor, engineer, farmer, guard, guitarist, historian, inspector, instructor, journalist, judge, landlord, lawyer, legislator, manager, mechanic, minister, model, musician, nurse, official, operator, photographer, physician, pilot, poet, politician, priest, producer, professor, psychiatrist, psychologist, researcher, scientist, secretary, sewer, singer, soldier, student, supervisor, surgeon, tailor, teacher, technician, tutor, veterinarian, writer"
-    roles = [role.strip() for role in roles.split(',')]
+    roles = GSS_OCCUPATIONS
     
     tokenizer = AutoTokenizer.from_pretrained(args.model_path)
     tokenizer.pad_token = tokenizer.eos_token
