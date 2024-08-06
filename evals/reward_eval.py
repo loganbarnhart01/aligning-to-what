@@ -1,6 +1,7 @@
 import os
 from typing import List, Dict
 import pickle
+import argparse
 
 import torch
 
@@ -11,11 +12,12 @@ from datasets import load_dataset
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 @torch.no_grad()
-def main():
+def main(args):
+    model_ext = args.run_name
     base_model_name = "meta-llama/Meta-Llama-3-8B"
-    weight_path = "/home/logan/covert-bias/weights/dpo_1/"
+    weight_path = f"/home/logan/covert-bias/weights/{model_ext}/"
     checkpoints = [f"checkpoint-{i}" for i in range(500, 16500, 500)] + ['checkpoint-16437']
-    output_file = "evals/dpo_1_completions.txt"
+    output_file = f"evals/{model_ext}_completions.txt"
 
     eval_samples = 500
     eval_dataset = load_dataset("trl-internal-testing/hh-rlhf-helpful-base-trl-style", split="test").select(range(eval_samples))
@@ -107,4 +109,7 @@ class ArmoRMPipeline:
         return {"score": score}
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--run_name", type=str, required=True) # path to model weights
+    args = parser.parse_args()
+    main(args)
