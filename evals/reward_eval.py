@@ -17,9 +17,9 @@ def main(args):
     base_model_name = "meta-llama/Meta-Llama-3-8B"
     weight_path = f"/home/logan/covert-bias/weights/{model_ext}/"
     checkpoints = [f"checkpoint-{i}" for i in range(500, 16500, 500)] + ['checkpoint-16437']
-    output_file = f"evals/{model_ext}_completions.txt"
+    
 
-    eval_samples = 500
+    eval_samples = 50
     eval_dataset = load_dataset("trl-internal-testing/hh-rlhf-helpful-base-trl-style", split="test").select(range(eval_samples))
 
     base_model = AutoModelForCausalLM.from_pretrained(base_model_name).to(device)
@@ -70,7 +70,8 @@ def main(args):
                 scores[checkpoint].append((score['score'], prompt, completion))
 
     print("Writing to file...")
-    with open(output_file, 'w') as f:
+    output_file = f"evals/{model_ext}_completions.pkl"
+    with open(output_file, 'wb') as f:
         pickle.dump(scores, f)
 
 
