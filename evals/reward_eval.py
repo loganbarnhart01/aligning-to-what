@@ -19,7 +19,7 @@ def main(args):
     checkpoints = [f"checkpoint-{i}" for i in range(500, 16500, 500)] + ['checkpoint-16437']
     
 
-    eval_samples = 50
+    eval_samples = 1000
     eval_dataset = load_dataset("trl-internal-testing/hh-rlhf-helpful-base-trl-style", split="test").select(range(eval_samples))
 
     base_model = AutoModelForCausalLM.from_pretrained(base_model_name).to(device)
