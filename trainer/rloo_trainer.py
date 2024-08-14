@@ -40,6 +40,7 @@ from trl.trainer.utils import (
     truncate_response,
 )
 from trl.trainer.rloo_config import RLOOConfig
+from peft import get_peft_model_state_dict
 
 from .utils import get_reward
 
@@ -467,6 +468,18 @@ class RLOOTrainer(Trainer):
         if self.control.should_save:
             self._save_checkpoint(model, trial=None, metrics=None)
             self.control = self.callback_handler.on_save(self.args, self.state, self.control)
+
+    def _save_checkpoint(self, model, trial, metrics=None):
+        # Get the LoRA model state dict
+        lora_state_dict = get_peft_model_state_dict(model)
+        
+        # Save only the LoRA weights
+        checkpoint_folder = f"{self.args.output_dir}/checkpoint-{self.state.global_step}"
+        self.save_model(checkpoint_folder, state_dict=lora_state_dict)
+        
+        # Save optimizer and scheduler if needed
+        if self.args.should_save:
+            self._save_optimizer_and_scheduler(checkpoint_folder)
 
     def generate_completions(self, sampling: bool = False):
         args = self.args
