@@ -60,20 +60,23 @@ def main(args):
 
     reward_model = ArmoRMPipeline('RLHFlow/ArmoRM-Llama3-8B-v0.1', trust_remote_code=True)
         
-    scores = {}
-
+    #scores = {}
+    avg_scores = {}
     for checkpoint in checkpoints:
-        scores[checkpoint] = []
+        #scores[checkpoint] = []
+        avg_scores[checkpoint] = 0
         for prompt, completion in completions[checkpoint]:
                 message = [{"role": "user", "content": prompt}, {"role": "assistant", "content": completion}]
                 score = reward_model(message)
-                scores[checkpoint].append((score['score'], prompt, completion))
-
-    print("Writing to file...")
-    output_file = f"evals/{model_ext}_completions.pkl"
-    with open(output_file, 'wb') as f:
-        pickle.dump(scores, f)
-
+    #            scores[checkpoint].append((score['score'], prompt, completion))
+                avg_scores[checkpoint] += score
+    #print("Writing to file...")
+    #output_file = f"evals/{model_ext}_completions.pkl"
+    #with open(output_file, 'wb') as f:
+    #    pickle.dump(scores, f)
+    print("Results:")
+    for k, v in avg_scores.items():
+        print(f"{k} Average Score: {v / eval_samples:.4f}")
 
 class ArmoRMPipeline:
     def __init__(self, model_id, device_map="auto", torch_dtype=torch.bfloat16, truncation=True, trust_remote_code=False, max_length=4096):
