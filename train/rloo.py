@@ -1,3 +1,6 @@
+import signal
+signal.signal(signal.SIGHUP, signal.SIG_IGN)
+
 import sys
 import os
 
