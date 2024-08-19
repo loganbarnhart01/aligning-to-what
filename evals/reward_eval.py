@@ -9,6 +9,8 @@ from transformers import AutoModelForCausalLM, AutoModelForSequenceClassificatio
 from peft import PeftModel
 from datasets import load_dataset
 
+from tqdm import tqdm
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 @torch.no_grad()
@@ -42,19 +44,24 @@ def main(args):
 
     completions = {}
 
-    for checkpoint in checkpoints:
+    for checkpoint in tqdm(checkpoints, desc="Checkpoints"):
         checkpoint_path = os.path.join(weight_path, checkpoint)
         completions[checkpoint] = []
         # Load adapter weights
         peft_model = PeftModel.from_pretrained(base_model, checkpoint_path)
         peft_model.eval()
         
-        for row in eval_dataset:
+        for row in tqdm(eval_dataset, desc=f"Generating completions for {checkpoint}", leave=False):
             prompt = row['prompt']
             completion = generate_completions(peft_model, prompt)
             completions[checkpoint].append((prompt, completion))
     
     del base_model, peft_model, tokenizer, eval_dataset
+
+    print("Writing completions to file...")
+    output_file = f"evals/{model_ext}_completions.pkl"
+    with open(output_file, 'wb') as f:
+       pickle.dump(completions, f)
 
     print("Scoring completions...")
 
@@ -62,14 +69,14 @@ def main(args):
         
     #scores = {}
     avg_scores = {}
-    for checkpoint in checkpoints:
+    for checkpoint in tqdm(checkpoints, desc="Checkpoints"):
         #scores[checkpoint] = []
         avg_scores[checkpoint] = 0
-        for prompt, completion in completions[checkpoint]:
+        for prompt, completion in tqdm(completions[checkpoint], desc=f"Scoring {checkpoint}", leave=False):
                 message = [{"role": "user", "content": prompt}, {"role": "assistant", "content": completion}]
                 score = reward_model(message)
     #            scores[checkpoint].append((score['score'], prompt, completion))
-                avg_scores[checkpoint] += score
+                avg_scores[checkpoint] += score['score']
     #print("Writing to file...")
     #output_file = f"evals/{model_ext}_completions.pkl"
     #with open(output_file, 'wb') as f:
