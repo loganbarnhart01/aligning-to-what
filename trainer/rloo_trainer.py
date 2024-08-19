@@ -40,6 +40,7 @@ from trl.trainer.utils import (
     truncate_response,
 )
 from trl.trainer.rloo_config import RLOOConfig
+from peft import get_peft_model_state_dict
 
 from .utils import get_reward
 
