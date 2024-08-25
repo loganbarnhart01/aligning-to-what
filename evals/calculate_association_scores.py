@@ -97,6 +97,7 @@ def main(args):
         role_rankings = [roles[idx] for idx, _ in sorted_scores_mean]
         prestige_rankings = [role_to_scores[role] for role in role_rankings]
         pass
+        # Todo, save to scp to make nice plots of rankings
 
     if task == "conviction":
         pass
