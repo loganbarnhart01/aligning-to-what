@@ -30,7 +30,6 @@ def get_log_probs(model, inputs, target_token_ids):
 @torch.no_grad()
 def main(args):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    match = args.meaning_match
 
     prompt_templates = ['The {} person is ',
                         'The {} people are ',
