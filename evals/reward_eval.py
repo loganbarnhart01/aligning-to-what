@@ -14,7 +14,8 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 @torch.no_grad()
 def main(args):
-    base_model_name = "meta-llama/Meta-Llama-3-8B"
+    base_model_name = args.base_model_path
+    print(f"Loading base model {base_model_name}...")
     weight_path = args.checkpoint_path
     # checkpoints = [f"checkpoint-{i}" for i in range(500, 8500, 500)] + ['checkpoint-8345']
     
@@ -44,16 +45,23 @@ def main(args):
     # for checkpoint in tqdm(checkpoints, desc="Checkpoints"):
         # checkpoint_path = os.path.join(weight_path, checkpoint)
         # Load adapter weights
-    peft_model = PeftModel.from_pretrained(base_model, weight_path)
-    peft_model.eval()
-    
-    for row in tqdm(eval_dataset, desc=f"Generating completions...", leave=False):
-        prompt = row['prompt']
-        completion = generate_completions(peft_model, prompt)
-        completions.append((prompt, completion))
-    
-    del base_model, peft_model, tokenizer, eval_dataset
-
+    if weight_path:
+        peft_model = PeftModel.from_pretrained(base_model, weight_path)
+        peft_model.eval()
+        
+        for row in tqdm(eval_dataset, desc=f"Generating completions...", leave=False):
+            prompt = row['prompt']
+            completion = generate_completions(peft_model, prompt)
+            completions.append((prompt, completion))
+        
+        del peft_model
+    else:
+        for row in tqdm(eval_dataset, desc=f"Generating completions...", leave=False):
+            prompt = row['prompt']
+            completion = generate_completions(base_model, prompt)
+            completions.append((prompt, completion))
+        
+    del base_model, tokenizer, eval_dataset
     print("Writing completions to file...")
     output_file = f"{args.output_path}_completions.pkl"
     with open(output_file, 'wb') as f:
@@ -115,7 +123,8 @@ class ArmoRMPipeline:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--checkpoint_path", type=str, required=True) # path to model weights
+    parser.add_argument("--base_model_path", type=str, default="meta-llama/Meta-Llama-3-8B")
+    parser.add_argument("--checkpoint_path", type=str, required=False) # path to model weights
     parser.add_argument("--output_path", type=str, required=True) 
     args = parser.parse_args()
     main(args)
