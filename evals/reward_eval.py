@@ -1,10 +1,9 @@
-import os
 from typing import List, Dict
 import pickle
 import argparse
 
 import torch
-
+import numpy as np
 from transformers import AutoModelForCausalLM, AutoModelForSequenceClassification, AutoTokenizer
 from peft import PeftModel
 from datasets import load_dataset
@@ -15,12 +14,10 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 @torch.no_grad()
 def main(args):
-    model_ext = args.run_name
     base_model_name = "meta-llama/Meta-Llama-3-8B"
-    weight_path = f"/home/logan/covert-bias/weights/{model_ext}/"
-    checkpoints = [f"checkpoint-{i}" for i in range(500, 16500, 500)] + ['checkpoint-16437']
+    weight_path = args.checkpoint_path
+    # checkpoints = [f"checkpoint-{i}" for i in range(500, 8500, 500)] + ['checkpoint-8345']
     
-
     eval_samples = 1000
     eval_dataset = load_dataset("trl-internal-testing/hh-rlhf-helpful-base-trl-style", split="test").select(range(eval_samples))
 
@@ -42,24 +39,23 @@ def main(args):
         outputs = outputs[:, input_len:]
         return ''.join([tokenizer.decode(output, skip_special_tokens=True) for output in outputs.tolist()])
 
-    completions = {}
+    completions = []
 
-    for checkpoint in tqdm(checkpoints, desc="Checkpoints"):
-        checkpoint_path = os.path.join(weight_path, checkpoint)
-        completions[checkpoint] = []
+    # for checkpoint in tqdm(checkpoints, desc="Checkpoints"):
+        # checkpoint_path = os.path.join(weight_path, checkpoint)
         # Load adapter weights
-        peft_model = PeftModel.from_pretrained(base_model, checkpoint_path)
-        peft_model.eval()
-        
-        for row in tqdm(eval_dataset, desc=f"Generating completions for {checkpoint}", leave=False):
-            prompt = row['prompt']
-            completion = generate_completions(peft_model, prompt)
-            completions[checkpoint].append((prompt, completion))
+    peft_model = PeftModel.from_pretrained(base_model, weight_path)
+    peft_model.eval()
+    
+    for row in tqdm(eval_dataset, desc=f"Generating completions...", leave=False):
+        prompt = row['prompt']
+        completion = generate_completions(peft_model, prompt)
+        completions.append((prompt, completion))
     
     del base_model, peft_model, tokenizer, eval_dataset
 
     print("Writing completions to file...")
-    output_file = f"evals/{model_ext}_completions.pkl"
+    output_file = f"{args.output_path}_completions.pkl"
     with open(output_file, 'wb') as f:
        pickle.dump(completions, f)
 
@@ -68,22 +64,20 @@ def main(args):
     reward_model = ArmoRMPipeline('RLHFlow/ArmoRM-Llama3-8B-v0.1', trust_remote_code=True)
         
     #scores = {}
-    avg_scores = {}
-    for checkpoint in tqdm(checkpoints, desc="Checkpoints"):
-        #scores[checkpoint] = []
-        avg_scores[checkpoint] = 0
-        for prompt, completion in tqdm(completions[checkpoint], desc=f"Scoring {checkpoint}", leave=False):
-                message = [{"role": "user", "content": prompt}, {"role": "assistant", "content": completion}]
-                score = reward_model(message)
-    #            scores[checkpoint].append((score['score'], prompt, completion))
-                avg_scores[checkpoint] += score['score']
+    avg_scores = []
+    # for checkpoint in tqdm(checkpoints, desc="Checkpoints"):
+    #     #scores[checkpoint] = []
+    #     avg_scores[checkpoint] = 0
+    for prompt, completion in tqdm(completions, desc=f"Scoring...", leave=False):
+            message = [{"role": "user", "content": prompt}, {"role": "assistant", "content": completion}]
+            score = reward_model(message)
+#            scores[checkpoint].append((score['score'], prompt, completion))
+            avg_scores.append(score['score'])
     #print("Writing to file...")
-    #output_file = f"evals/{model_ext}_completions.pkl"
-    #with open(output_file, 'wb') as f:
-    #    pickle.dump(scores, f)
-    print("Results:")
-    for k, v in avg_scores.items():
-        print(f"{k} Average Score: {v / eval_samples:.4f}")
+    output_file = f"{args.output_path}_scores.pkl"
+    print(f"Average score: {np.mean(avg_scores):.4f}")
+    with open(output_file, 'wb') as f:
+       pickle.dump(avg_scores, f)
 
 class ArmoRMPipeline:
     def __init__(self, model_id, device_map="auto", torch_dtype=torch.bfloat16, truncation=True, trust_remote_code=False, max_length=4096):
@@ -121,6 +115,7 @@ class ArmoRMPipeline:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--run_name", type=str, required=True) # path to model weights
+    parser.add_argument("--checkpoint_path", type=str, required=True) # path to model weights
+    parser.add_argument("--output_path", type=str, required=True) 
     args = parser.parse_args()
     main(args)
