@@ -18,8 +18,8 @@ def main(args):
     model_ext = args.run_name
     base_model_name = "meta-llama/Meta-Llama-3-8B"
     weight_path = f"/home/logan/covert-bias/weights/{model_ext}/"
-    checkpoints = [f"checkpoint-{i}" for i in range(500, 16500, 500)] + ['checkpoint-16437']
-    
+    checkpoints = [f"checkpoint-{i}" for i in range(500, 16500, 500)] # + ['checkpoint-16437']
+    checkpoints = checkpoints[::2] + ['checkpoint-16437'] # skipping some checkpoints for now to save time
 
     eval_samples = 1000
     eval_dataset = load_dataset("trl-internal-testing/hh-rlhf-helpful-base-trl-style", split="test").select(range(eval_samples))
@@ -55,32 +55,40 @@ def main(args):
             prompt = row['prompt']
             completion = generate_completions(peft_model, prompt)
             completions[checkpoint].append((prompt, completion))
+
+        # save completions at each checkpoint in case
+        print(f"Saving completions for {checkpoint}")
+        os.makedirs(f"evals/{model_ext}_completions/", exist_ok=True)
+        output_file = f"evals/{model_ext}_completions/{checkpoint}_completions.pkl"
+        with open(output_file, 'wb') as f:
+            pickle.dump(completions[checkpoint], f)
     
     del base_model, peft_model, tokenizer, eval_dataset
 
-    print("Writing completions to file...")
-    output_file = f"evals/{model_ext}_completions.pkl"
-    with open(output_file, 'wb') as f:
-       pickle.dump(completions, f)
+    # print("Writing completions to file...")
+    # output_file = f"evals/{model_ext}_completions.pkl"
+    # with open(output_file, 'wb') as f:
+    #    pickle.dump(completions, f)
 
     print("Scoring completions...")
 
     reward_model = ArmoRMPipeline('RLHFlow/ArmoRM-Llama3-8B-v0.1', trust_remote_code=True)
         
-    #scores = {}
+    scores = {}
     avg_scores = {}
     for checkpoint in tqdm(checkpoints, desc="Checkpoints"):
-        #scores[checkpoint] = []
+        scores[checkpoint] = []
         avg_scores[checkpoint] = 0
         for prompt, completion in tqdm(completions[checkpoint], desc=f"Scoring {checkpoint}", leave=False):
                 message = [{"role": "user", "content": prompt}, {"role": "assistant", "content": completion}]
                 score = reward_model(message)
-    #            scores[checkpoint].append((score['score'], prompt, completion))
+                scores[checkpoint].append(score['score'])
                 avg_scores[checkpoint] += score['score']
-    #print("Writing to file...")
-    #output_file = f"evals/{model_ext}_completions.pkl"
-    #with open(output_file, 'wb') as f:
-    #    pickle.dump(scores, f)
+        print(f"Saving scores for {checkpoint}...")
+        os.makedirs(f"evals/{model_ext}_scores/", exist_ok=True)
+        output_file = f"evals/{model_ext}_scores/{checkpoint}_scores.pkl"
+        with open(output_file, 'wb') as f:
+            pickle.dump(scores[checkpoint], f)
     print("Results:")
     for k, v in avg_scores.items():
         print(f"{k} Average Score: {v / eval_samples:.4f}")
