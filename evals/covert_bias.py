@@ -127,7 +127,7 @@ if __name__ == "__main__":
     parser.add_argument("--sae-path", type=str, required=True) # path to sae dataset
     parser.add_argument("--output-path", type=str, required=True) # filename to save the dictionary of association values to
     parser.add_argument("--batch-size", type=int, default=4) # batch size 
-    parser.add_argument("--meaning-match", type=bool, default=True) # does the meaning of sample i in aae match the meaning of sample i in sae? scoring changes depending on this
+    parser.add_argument("--meaning-match", type=bool, default=False) # does the meaning of sample i in aae match the meaning of sample i in sae? scoring changes depending on this
     args = parser.parse_args()
 
     main(args)
