@@ -36,6 +36,7 @@ traits_12 = ATTRIBUTES_BERGSIEKER
 score_12 = SCORES_BERGSIEKER
 
 traits = [(traits_32, score_32, '1932'), (traits_50, score_50, '1950'), (traits_67, score_67, '1967'), (traits_12, score_12, '2012')]
+# traits = [(traits_32, '1932'), (traits_50, '1950'), (traits_67, '1967'), (traits_12, '2012')]
 
 adj_to_scores = {adjectives[i] : favorabilities[i] for i in range(len(adjectives))}
 role_to_scores = {roles[i] : prestige[i] for i in range(len(roles))}
@@ -43,10 +44,10 @@ role_to_scores = {roles[i] : prestige[i] for i in range(len(roles))}
 def main(args):
     task = args.task    
     with open(args.scores_path, "rb") as f:
-        scores = pickle.load(f)
+        model_scores = pickle.load(f)
 
     if task == "association":
-        scores_mean = mean_scores(scores)
+        scores_mean = mean_scores(model_scores)
         sorted_scores_mean = sorted(enumerate(scores_mean), key=lambda x: x[1])
         top_5 = sorted_scores_mean[-5:]
         bottom_5 = sorted_scores_mean[:5]
@@ -59,7 +60,7 @@ def main(args):
         for idx, score in reversed(top_5):
             print(f"{adjectives[idx]}: {score:.4f}")
             top_5_fav_score += adj_to_scores[adjectives[idx]] * score
-            top_5_denome += score
+            top_5_denom += score
         print("\nBottom 5 adjectives (More association with SAE):")
         for idx, score in bottom_5:
             print(f"{adjectives[idx]}: {score:.4f}")
@@ -68,17 +69,17 @@ def main(args):
         
         top_5_fav_score /= top_5_denom
         bottom_5_fav_score /= bottom_5_denom
-        print("Average favorability of top 5 adjectives: {top_5_fav_score:.4f}")
-        print("Average favorability of bottom 5 adjectives: {bottom_5_fav_score:.4f}")
+        print(f"Average favorability of top 5 adjectives: {top_5_fav_score:.4f}")
+        print(f"Average favorability of bottom 5 adjectives: {bottom_5_fav_score:.4f}")
 
-        for trait, year in traits:
+        for trait, _, year in traits:
             fav_score = sum([adj_to_scores[adj] for adj in trait]) / len(trait)
-            print(f"Average favorability of top 5 adjectives in {year}: {top_5_fav_score:.4f}")
+            print(f"Average favorability of top 5 adjectives in {year}: {fav_score:.4f}")
 
     if task == "agreement":
         agreements = {}
-        for prompt in scores:
-            prompt_scores = scores[prompt]
+        for prompt in model_scores:
+            prompt_scores = model_scores[prompt]
             sorted_scores = sorted(enumerate(prompt_scores), key=lambda x: x[1], reverse=True)
             sorted_adjectives = [adjectives[idx] for idx, _ in sorted_scores]
             for trait, scores, year in traits:
@@ -91,7 +92,7 @@ def main(args):
         for year, agreement in agreements.items():
             print(f"Agreement for {year}: {agreement:.4f}")
         
-    if task == "prestige":
+    if task == "employment":
         scores_mean = mean_scores(scores)
         sorted_scores_mean = sorted(enumerate(scores_mean), key=lambda x: x[1])
         role_rankings = [roles[idx] for idx, _ in sorted_scores_mean]
