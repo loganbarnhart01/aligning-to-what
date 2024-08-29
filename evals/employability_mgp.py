@@ -8,7 +8,10 @@ from torch.utils.data import Dataset, DataLoader
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from tqdm import tqdm
 
+import random
 from data import GSS_OCCUPATIONS
+
+random.seed(1)  # You can use any integer value here
 
 working_dir = os.path.dirname(os.path.abspath(__file__))
 
@@ -63,12 +66,12 @@ def main(args):
     
     prompt_association_scores = {prompt_template : [] for prompt_template in prompt_templates}
 
-    roles = GSS_OCCUPATIONS
+    roles = random.sample(GSS_OCCUPATIONS, 100)
     
     tokenizer = AutoTokenizer.from_pretrained(args.model_path)
     tokenizer.pad_token = tokenizer.eos_token
     tokenizer.padding_side = 'left'
-    model = AutoModelForCausalLM.from_pretrained(args.model_path, device_map=device)
+    model = AutoModelForCausalLM.from_pretrained(args.model_path, device_map=device, torch_dtype=torch.float16)
 
     for prompt_template in prompt_templates:
         dataset = TextDataset(args.aae_path, args.sae_path, prompt_template)

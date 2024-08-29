@@ -68,7 +68,7 @@ def main(args):
     tokenizer = AutoTokenizer.from_pretrained(args.model_path)
     tokenizer.pad_token = tokenizer.eos_token
     tokenizer.padding_side = 'left'
-    model = AutoModelForCausalLM.from_pretrained(args.model_path, device_map=device)
+    model = AutoModelForCausalLM.from_pretrained(args.model_path, device_map=device, torch_dtype=torch.float16)
 
     for prompt_template in prompt_templates:
         dataset = TextDataset(args.aae_path, args.sae_path, prompt_template)
