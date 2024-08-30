@@ -100,11 +100,16 @@ def main(args):
         pass
         # Todo, save to scp to make nice plots of rankings
 
-    if task == "conviction":
-        pass
+    if task == "criminality":
+        print(model_scores)
+        for prompt in model_scores:
+            scores = model_scores[prompt]
+            model_scores[prompt] = [t.item() for t in scores]
+        scores_mean = mean_scores(model_scores)
+        print(scores_mean)
 
-    if task == "life_death":
-        pass
+    if task == "mean":
+        print(mean_scores(model_scores))
 
 def average_precision(traits, traits_true):
     def precision(traits_pred, traits_true):
