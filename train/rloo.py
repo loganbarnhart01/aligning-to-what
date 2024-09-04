@@ -21,13 +21,10 @@ from trl.trainer.utils import SIMPLE_QUERY_CHAT_TEMPLATE
 from trl.commands.cli_utils import TrlParser
 from peft import get_peft_model
 
-# from trainer.rloo_trainer import RLOOTrainer
-# from trainer.original_rloo_trainer import RLOOTrainer
 from trl.trainer.rloo_trainer import RLOOTrainer
-from models.reward_model import RewardModelWrapper
+# from models.reward_model import RewardModelWrapper
 
 # --reward_model_path RLHFlow/ArmoRM-Llama3-8B-v0.1     \
-
 """
 CUDA_VISIBLE_DEVICES=0,1 nohup accelerate launch --config_file train/deepspeed_zero3_1.yaml train/rloo.py         \
     --model_name_or_path=meta-llama/Meta-Llama-3-8B         \
@@ -53,11 +50,33 @@ CUDA_VISIBLE_DEVICES=0,1 nohup accelerate launch --config_file train/deepspeed_z
     --rloo_k=4   \
     --non_eos_penalty   \
     --stop_token eos    \
+    --per_device_eval_batch_size=4      \
     &> nohup.out &
 
 
 """
 
+def prepare_dataset(dataset, tokenizer):
+    """pre-tokenize the dataset before training; only collate during training"""
+    def tokenize(element):
+        dataset_text_field = "chosen"
+        def process_conversation(conversation):
+            if conversation[-1]["role"] == "assistant":
+                return conversation[:-1]
+            return conversation
+        processed_conversations = [process_conversation(conv) for conv in element[dataset_text_field]]
+        outputs = tokenizer.apply_chat_template(
+            processed_conversations,
+            padding=False,
+        )
+        return {"input_ids": outputs}
+    return dataset.map(
+        tokenize,
+        remove_columns=dataset.column_names,
+        batched=True,
+        num_proc=4,  # multiprocessing.cpu_count(),
+        load_from_cache_file=False,
+    )
 
 if __name__ == "__main__":
     parser = TrlParser((RLOOConfig, ModelConfig))
@@ -67,12 +86,13 @@ if __name__ == "__main__":
     # Model & Tokenizer
     ###############
     tokenizer = AutoTokenizer.from_pretrained(
-        config.reward_model_path,
+        config.sft_model_path,
         padding_side="left",
         trust_remote_code=True,
     )
+    tokenizer.add_special_tokens({"pad_token": "[PAD]"})
     if tokenizer.chat_template is None:
-       tokenizer.chat_template = SIMPLE_QUERY_CHAT_TEMPLATE
+        tokenizer.chat_template = SIMPLE_QUERY_CHAT_TEMPLATE
     # reward_model = RewardModelWrapper(config.reward_model_path)
     reward_model = AutoModelForSequenceClassification.from_pretrained(
         config.reward_model_path, trust_remote_code=model_config.trust_remote_code, num_labels=1
@@ -89,39 +109,11 @@ if __name__ == "__main__":
     eval_samples = 20
     train_dataset = load_dataset("trl-internal-testing/hh-rlhf-trl-style", split="train")
     eval_dataset = load_dataset("trl-internal-testing/hh-rlhf-trl-style", split="test").select(range(eval_samples))
-    
+    train_dataset = prepare_dataset(train_dataset, tokenizer)
+    eval_dataset = prepare_dataset(eval_dataset, tokenizer)
 
-    def prepare_dataset(dataset, tokenizer):
-        """pre-tokenize the dataset before training; only collate during training"""
-
-        def tokenize(element):
-            dataset_text_field = "chosen"
-            def process_conversation(conversation):
-                if conversation[-1]["role"] == "assistant":
-                    return conversation[:-1]
-                return conversation
-
-            processed_conversations = [process_conversation(conv) for conv in element[dataset_text_field]]
-            outputs = tokenizer.apply_chat_template(
-                processed_conversations,
-                padding=False,
-            )
-            return {"input_ids": outputs}
-            # dataset_text_field = "prompt"
-            # outputs = tokenizer(
-            #     element[dataset_text_field],
-            #     padding=False,
-            # )
-            # return {"input_ids": outputs["input_ids"]}
-
-        return dataset.map(
-            tokenize,
-            remove_columns=dataset.column_names,
-            batched=True,
-            num_proc=4,  # multiprocessing.cpu_count(),
-            load_from_cache_file=False,
-        )
-
+    assert train_dataset is not None
+    assert eval_dataset is not None
     ################
     # Training
     ################
@@ -131,8 +123,8 @@ if __name__ == "__main__":
         policy=policy,
         ref_policy=ref_policy,
         reward_model=reward_model,
-        train_dataset=prepare_dataset(train_dataset, tokenizer),
-        eval_dataset=prepare_dataset(eval_dataset, tokenizer),
+        train_dataset=train_dataset,
+        eval_dataset=eval_dataset,
     )
     trainer.train()
     trainer.save_model(config.output_dir)
