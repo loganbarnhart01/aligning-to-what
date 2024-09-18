@@ -28,44 +28,48 @@ def main(args):
 
     print("Generating Completions...")
 
-    def generate_completions(model, prompt):
-        inputs = tokenizer(prompt, return_tensors="pt").to(device)
-        input_len = inputs['input_ids'].shape[1]
-        outputs = model.generate(
-            **inputs,
-            max_new_tokens=128,  # Adjust as needed
-            temperature=0.7,    # Adjust as needed
-            do_sample=True,
-        )
-        outputs = outputs[:, input_len:]
-        return ''.join([tokenizer.decode(output, skip_special_tokens=True) for output in outputs.tolist()])
+    if not args.completion_path:
+        def generate_completions(model, prompt):
+            inputs = tokenizer(prompt, return_tensors="pt").to(device)
+            input_len = inputs['input_ids'].shape[1]
+            outputs = model.generate(
+                **inputs,
+                max_new_tokens=128,  # Adjust as needed
+                temperature=0.7,    # Adjust as needed
+                do_sample=True,
+            )
+            outputs = outputs[:, input_len:]
+            return ''.join([tokenizer.decode(output, skip_special_tokens=True) for output in outputs.tolist()])
 
-    completions = []
+        completions = []
 
-    # for checkpoint in tqdm(checkpoints, desc="Checkpoints"):
-        # checkpoint_path = os.path.join(weight_path, checkpoint)
-        # Load adapter weights
-    if weight_path:
-        peft_model = PeftModel.from_pretrained(base_model, weight_path)
-        peft_model.eval()
-        
-        for row in tqdm(eval_dataset, desc=f"Generating completions...", leave=False):
-            prompt = row['prompt']
-            completion = generate_completions(peft_model, prompt)
-            completions.append((prompt, completion))
-        
-        del peft_model
+        # for checkpoint in tqdm(checkpoints, desc="Checkpoints"):
+            # checkpoint_path = os.path.join(weight_path, checkpoint)
+            # Load adapter weights
+        if weight_path:
+            peft_model = PeftModel.from_pretrained(base_model, weight_path)
+            peft_model.eval()
+            
+            for row in tqdm(eval_dataset, desc=f"Generating completions...", leave=False):
+                prompt = row['prompt']
+                completion = generate_completions(peft_model, prompt)
+                completions.append((prompt, completion))
+            
+            del peft_model
+        else:
+            for row in tqdm(eval_dataset, desc=f"Generating completions...", leave=False):
+                prompt = row['prompt']
+                completion = generate_completions(base_model, prompt)
+                completions.append((prompt, completion))
+            
+        del base_model, tokenizer, eval_dataset
+        print("Writing completions to file...")
+        output_file = f"{args.output_path}_completions.pkl"
+        with open(output_file, 'wb') as f:
+            pickle.dump(completions, f)
     else:
-        for row in tqdm(eval_dataset, desc=f"Generating completions...", leave=False):
-            prompt = row['prompt']
-            completion = generate_completions(base_model, prompt)
-            completions.append((prompt, completion))
-        
-    del base_model, tokenizer, eval_dataset
-    print("Writing completions to file...")
-    output_file = f"{args.output_path}_completions.pkl"
-    with open(output_file, 'wb') as f:
-       pickle.dump(completions, f)
+        with open(args.completion_path, 'rb') as f:
+            completions = pickle.load(f)
 
     print("Scoring completions...")
 
@@ -126,5 +130,6 @@ if __name__ == "__main__":
     parser.add_argument("--base_model_path", type=str, default="meta-llama/Meta-Llama-3-8B")
     parser.add_argument("--checkpoint_path", type=str, required=False) # path to model weights
     parser.add_argument("--output_path", type=str, required=True) 
+    parser.add_argument("--completion_path", type=str, required=False) 
     args = parser.parse_args()
     main(args)
