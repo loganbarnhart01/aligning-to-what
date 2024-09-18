@@ -26,7 +26,7 @@ from trl.trainer.rloo_trainer import RLOOTrainer
 
 # --reward_model_path RLHFlow/ArmoRM-Llama3-8B-v0.1     \
 """
-CUDA_VISIBLE_DEVICES=0,1 nohup accelerate launch --config_file train/deepspeed_zero3_1.yaml train/rloo.py         \
+CUDA_VISIBLE_DEVICES=0,1,2 nohup accelerate launch --config_file train/deepspeed_zero3_1.yaml train/rloo.py         \
     --model_name_or_path=meta-llama/Meta-Llama-3-8B         \
     --sft_model_path=meta-llama/Meta-Llama-3-8B         \
     --reward_model_path NCSOFT/Llama-3-OffsetBias-RM-8B     \
@@ -112,8 +112,6 @@ if __name__ == "__main__":
     train_dataset = prepare_dataset(train_dataset, tokenizer)
     eval_dataset = prepare_dataset(eval_dataset, tokenizer)
 
-    assert train_dataset is not None
-    assert eval_dataset is not None
     ################
     # Training
     ################
