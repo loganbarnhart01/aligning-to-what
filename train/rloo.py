@@ -8,6 +8,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import shutil
 
+import torch
 from datasets import load_dataset
 from transformers import (
     AutoModelForCausalLM,
@@ -64,9 +65,10 @@ if __name__ == "__main__":
     )
     if tokenizer.chat_template is None:
        tokenizer.chat_template = SIMPLE_QUERY_CHAT_TEMPLATE
-    reward_model = RewardModelWrapper(config.reward_model_path)
-    ref_policy = AutoModelForCausalLM.from_pretrained(config.sft_model_path)
-    policy = AutoModelForCausalLM.from_pretrained(config.sft_model_path)
+    torch_dtype = torch.float16
+    reward_model = RewardModelWrapper(config.reward_model_path, torch_dtype=torch_dtype)
+    ref_policy = AutoModelForCausalLM.from_pretrained(config.sft_model_path, torch_dtype=torch_dtype)
+    policy = AutoModelForCausalLM.from_pretrained(config.sft_model_path, torch_dtype=torch_dtype)
     if model_config.use_peft:
         lora_config = get_peft_config(model_config)
         policy = get_peft_model(policy, lora_config)
