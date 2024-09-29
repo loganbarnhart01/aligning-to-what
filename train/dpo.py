@@ -30,15 +30,17 @@ python examples/scripts/dpo.py \
     --no_remove_unused_columns
 
 # peft:
-python examples/scripts/dpo.py \
+python train/dpo.py \
     --dataset_name=trl-internal-testing/hh-rlhf-helpful-base-trl-style \
-    --model_name_or_path=meta-llama/Meta-Llama-3-8B \
+    --model_name_or_path=mistralai/Mistral-7B-v0.3 \
     --per_device_train_batch_size 4 \
-    --learning_rate 1e-3 \
-    --gradient_accumulation_steps 1 \
+    --per_device_eval_batch_size 4 \
+    --learning_rate 8e-5 \
+    --gradient_accumulation_steps 2 \
+    --gradient_checkpointing=True \
     --logging_steps 10 \
     --eval_steps 500 \
-    --output_dir="dpo_anthropic_hh" \
+    --output_dir=/home/logan/covert-bias/weights/mistral_dpo_1 \
     --optim rmsprop \
     --warmup_steps 150 \
     --report_to wandb \
@@ -47,7 +49,10 @@ python examples/scripts/dpo.py \
     --no_remove_unused_columns \
     --use_peft \
     --lora_r=16 \
-    --lora_alpha=16
+    --lora_alpha=16 \
+    --num_train_epochs=1 \
+    --torch_dtype=float16 \
+    --save_steps=1000
 """
 import os
 
@@ -140,7 +145,7 @@ if __name__ == "__main__":
     ################
     # Dataset
     ################
-    ds = load_dataset("trl-internal-testing/hh-rlhf-helpful-base-trl-style")
+    ds = load_dataset(args.dataset_name)
     if args.sanity_check:
         for key in ds:
             ds[key] = ds[key].select(range(50))

@@ -23,21 +23,24 @@ from trl.commands.cli_utils import TrlParser
 from peft import get_peft_model
 
 from trl.trainer.rloo_trainer import RLOOTrainer
+# from trainer.rloo_trainer import RLOOTrainer
 # from models.reward_model import RewardModelWrapper
 
-# --reward_model_path RLHFlow/ArmoRM-Llama3-8B-v0.1     \
+    # --reward_model_path RLHFlow/ArmoRM-Llama3-8B-v0.1     \
 """
-CUDA_VISIBLE_DEVICES=0,1,2 nohup accelerate launch --config_file train/deepspeed_zero3_1.yaml train/rloo.py         \
+CUDA_VISIBLE_DEVICES=1,2,3 nohup accelerate launch --config_file train/deepspeed_zero3_1.yaml train/rloo.py         \
     --model_name_or_path=meta-llama/Meta-Llama-3-8B         \
     --sft_model_path=meta-llama/Meta-Llama-3-8B         \
     --reward_model_path NCSOFT/Llama-3-OffsetBias-RM-8B     \
+    --num_ppo_epochs 1 \
+    --num_mini_batches 1 \
     --per_device_train_batch_size 4         \
-    --learning_rate 3e-5         \
+    --learning_rate 1e-4         \
     --gradient_accumulation_steps 2         \
     --gradient_checkpointing=True         \
     --logging_steps 10         \
     --eval_steps 500         \
-    --save_steps=500         \
+    --save_steps=5000         \
     --output_dir=/home/logan/covert-bias/weights/rloo_1         \
     --warmup_steps 150         \
     --report_to wandb         \
@@ -49,12 +52,9 @@ CUDA_VISIBLE_DEVICES=0,1,2 nohup accelerate launch --config_file train/deepspeed
     --fp16=true      \
     --num_train_epochs=1 \
     --rloo_k=4   \
-    --non_eos_penalty   \
-    --stop_token eos    \
     --per_device_eval_batch_size=4      \
+    --trust_remote_code=True         \
     &> nohup.out &
-
-
 """
 
 def prepare_dataset(dataset, tokenizer):
@@ -95,7 +95,7 @@ if __name__ == "__main__":
     tokenizer.add_special_tokens({"pad_token": "[PAD]"})
     if tokenizer.chat_template is None:
         tokenizer.chat_template = SIMPLE_QUERY_CHAT_TEMPLATE
-    # reward_model = RewardModelWrapper(config.reward_model_path)
+    # reward_model = RewardModelWrapper(config.reward_model_path, torch_dtype=torch_dtype)
     reward_model = AutoModelForSequenceClassification.from_pretrained(
         config.reward_model_path, trust_remote_code=model_config.trust_remote_code, num_labels=1, torch_dtype=torch_dtype
     )
