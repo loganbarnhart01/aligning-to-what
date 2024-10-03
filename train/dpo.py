@@ -31,7 +31,7 @@ python examples/scripts/dpo.py \
 
 # peft:
 python train/dpo.py \
-    --dataset_name=trl-internal-testing/hh-rlhf-helpful-base-trl-style \
+    --dataset_name=trl-internal-testing/hh-rlhf-trl-style \
     --model_name_or_path=mistralai/Mistral-7B-v0.3 \
     --per_device_train_batch_size 4 \
     --per_device_eval_batch_size 4 \

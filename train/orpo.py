@@ -106,8 +106,8 @@ if __name__ == "__main__":
     # Dataset
     ################
     eval_samples = 20
-    train_dataset = load_dataset("trl-internal-testing/hh-rlhf-helpful-base-trl-style", split="train")
-    eval_dataset = load_dataset("trl-internal-testing/hh-rlhf-helpful-base-trl-style", split="test").select(range(eval_samples))
+    train_dataset = load_dataset("trl-internal-testing/hh-rlhf-trl-style", split="train")
+    eval_dataset = load_dataset("trl-internal-testing/hh-rlhf-trl-style", split="test").select(range(eval_samples))
 
     def preprocess_function(examples):
         new_examples = {
