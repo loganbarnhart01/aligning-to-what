@@ -15,14 +15,14 @@
 """
 # regular:
 python examples/scripts/dpo.py \
-    --dataset_name=trl-internal-testing/hh-rlhf-helpful-base-trl-style \
-    --model_name_or_path=gpt2 \
+    --dataset_name=trl-internal-testing/hh-rlhf-trl-style \
+    --model_name_or_path=/home/logan/covert-bias/weights/llama3_sft/checkpoint-781 \
     --per_device_train_batch_size 4 \
     --learning_rate 1e-3 \
     --gradient_accumulation_steps 1 \
     --logging_steps 10 \
     --eval_steps 500 \
-    --output_dir="dpo_anthropic_hh" \
+    --output_dir="weights/dpo_sft" \
     --warmup_steps 150 \
     --report_to wandb \
     --bf16 \
@@ -32,15 +32,15 @@ python examples/scripts/dpo.py \
 # peft:
 python train/dpo.py \
     --dataset_name=trl-internal-testing/hh-rlhf-trl-style \
-    --model_name_or_path=mistralai/Mistral-7B-v0.3 \
+    --model_name_or_path=meta-llama/Meta-Llama-3-8B \
     --per_device_train_batch_size 4 \
     --per_device_eval_batch_size 4 \
     --learning_rate 8e-5 \
-    --gradient_accumulation_steps 2 \
+    --gradient_accumulation_steps 4 \
     --gradient_checkpointing=True \
     --logging_steps 10 \
     --eval_steps 500 \
-    --output_dir=/home/logan/covert-bias/weights/mistral_dpo_1 \
+    --output_dir=/home/logan/covert-bias/weights/sft_dpo_1 \
     --optim rmsprop \
     --warmup_steps 150 \
     --report_to wandb \
@@ -86,6 +86,7 @@ from trl import (
     get_quantization_config,
 )
 
+from peft import PeftModel
 
 if TRL_USE_RICH:
     logging.basicConfig(format=FORMAT, datefmt="[%X]", handlers=[RichHandler()], level=logging.INFO)
@@ -115,7 +116,10 @@ if __name__ == "__main__":
         torch_dtype=torch_dtype,
         use_cache=False if training_args.gradient_checkpointing else True,
     )
+    checkpoint_path="/home/logan/covert-bias/weights/llama3_sft/checkpoint-781"
     model = AutoModelForCausalLM.from_pretrained(model_config.model_name_or_path, **model_kwargs)
+    model = PeftModel.from_pretrained(model, checkpoint_path)
+    model = model.merge_and_unload()
     peft_config = get_peft_config(model_config)
     if peft_config is None:
         model_ref = AutoModelForCausalLM.from_pretrained(model_config.model_name_or_path, **model_kwargs)

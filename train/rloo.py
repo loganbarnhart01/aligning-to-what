@@ -8,12 +8,10 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import shutil
 
-import torch
 from datasets import load_dataset
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
-    AutoModelForSequenceClassification
 )
 
 from trl import ModelConfig, get_peft_config
@@ -22,62 +20,37 @@ from trl.trainer.utils import SIMPLE_QUERY_CHAT_TEMPLATE
 from trl.commands.cli_utils import TrlParser
 from peft import get_peft_model
 
-from trl.trainer.rloo_trainer import RLOOTrainer
-# from trainer.rloo_trainer import RLOOTrainer
-# from models.reward_model import RewardModelWrapper
+from trainer.rloo_trainer import RLOOTrainer
+from models.reward_model import RewardModelWrapper
 
-    # --reward_model_path RLHFlow/ArmoRM-Llama3-8B-v0.1     \
+
 """
-CUDA_VISIBLE_DEVICES=1,2,3 nohup accelerate launch --config_file train/deepspeed_zero3_1.yaml train/rloo.py         \
+CUDA_VISIBLE_DEVICES=0,1 nohup accelerate launch --config_file train/deepspeed_zero3_1.yaml train/rloo.py         \
+    --dataset_name=trl-internal-testing/hh-rlhf-trl-style \
     --model_name_or_path=meta-llama/Meta-Llama-3-8B         \
     --sft_model_path=meta-llama/Meta-Llama-3-8B         \
-    --reward_model_path NCSOFT/Llama-3-OffsetBias-RM-8B     \
-    --num_ppo_epochs 1 \
-    --num_mini_batches 1 \
+    --reward_model_path RLHFlow/ArmoRM-Llama3-8B-v0.1     \
     --per_device_train_batch_size 4         \
     --learning_rate 1e-4         \
     --gradient_accumulation_steps 2         \
     --gradient_checkpointing=True         \
     --logging_steps 10         \
-    --eval_steps 500         \
-    --save_steps=5000         \
+    --eval_steps 1000         \
+    --save_steps 1500         \
     --output_dir=/home/logan/covert-bias/weights/rloo_1         \
     --warmup_steps 150         \
     --report_to wandb         \
-    --logging_first_step=true         \
+    --logging_first_step         \
     --no_remove_unused_columns         \
-    --use_peft=true         \
+    --use_peft         \
     --lora_r=16         \
     --lora_alpha=16        \
-    --fp16=true      \
-    --num_train_epochs=1 \
-    --rloo_k=4   \
-    --per_device_eval_batch_size=4      \
-    --trust_remote_code=True         \
+    --fp16      \
     &> nohup.out &
+
+
 """
 
-def prepare_dataset(dataset, tokenizer):
-    """pre-tokenize the dataset before training; only collate during training"""
-    def tokenize(element):
-        dataset_text_field = "chosen"
-        def process_conversation(conversation):
-            if conversation[-1]["role"] == "assistant":
-                return conversation[:-1]
-            return conversation
-        processed_conversations = [process_conversation(conv) for conv in element[dataset_text_field]]
-        outputs = tokenizer.apply_chat_template(
-            processed_conversations,
-            padding=False,
-        )
-        return {"input_ids": outputs}
-    return dataset.map(
-        tokenize,
-        remove_columns=dataset.column_names,
-        batched=True,
-        num_proc=4,  # multiprocessing.cpu_count(),
-        load_from_cache_file=False,
-    )
 
 if __name__ == "__main__":
     parser = TrlParser((RLOOConfig, ModelConfig))
@@ -87,20 +60,15 @@ if __name__ == "__main__":
     # Model & Tokenizer
     ###############
     tokenizer = AutoTokenizer.from_pretrained(
-        config.sft_model_path,
+        config.reward_model_path,
         padding_side="left",
         trust_remote_code=True,
     )
-    torch_dtype = torch.float16
-    tokenizer.add_special_tokens({"pad_token": "[PAD]"})
     if tokenizer.chat_template is None:
-        tokenizer.chat_template = SIMPLE_QUERY_CHAT_TEMPLATE
-    # reward_model = RewardModelWrapper(config.reward_model_path, torch_dtype=torch_dtype)
-    reward_model = AutoModelForSequenceClassification.from_pretrained(
-        config.reward_model_path, trust_remote_code=model_config.trust_remote_code, num_labels=1, torch_dtype=torch_dtype
-    )
-    ref_policy = AutoModelForCausalLM.from_pretrained(config.sft_model_path, torch_dtype=torch_dtype)
-    policy = AutoModelForCausalLM.from_pretrained(config.sft_model_path, torch_dtype=torch_dtype)
+       tokenizer.chat_template = SIMPLE_QUERY_CHAT_TEMPLATE
+    reward_model = RewardModelWrapper(config.reward_model_path)
+    ref_policy = AutoModelForCausalLM.from_pretrained(config.sft_model_path)
+    policy = AutoModelForCausalLM.from_pretrained(config.sft_model_path)
     if model_config.use_peft:
         lora_config = get_peft_config(model_config)
         policy = get_peft_model(policy, lora_config)
@@ -111,8 +79,25 @@ if __name__ == "__main__":
     eval_samples = 20
     train_dataset = load_dataset("trl-internal-testing/hh-rlhf-trl-style", split="train")
     eval_dataset = load_dataset("trl-internal-testing/hh-rlhf-trl-style", split="test").select(range(eval_samples))
-    train_dataset = prepare_dataset(train_dataset, tokenizer)
-    eval_dataset = prepare_dataset(eval_dataset, tokenizer)
+    dataset_text_field = "prompt"
+
+    def prepare_dataset(dataset, tokenizer):
+        """pre-tokenize the dataset before training; only collate during training"""
+
+        def tokenize(element):
+            outputs = tokenizer(
+                element[dataset_text_field],
+                padding=False,
+            )
+            return {"input_ids": outputs["input_ids"]}
+
+        return dataset.map(
+            tokenize,
+            remove_columns=dataset.column_names,
+            batched=True,
+            num_proc=4,  # multiprocessing.cpu_count(),
+            load_from_cache_file=False,
+        )
 
     ################
     # Training
@@ -123,8 +108,8 @@ if __name__ == "__main__":
         policy=policy,
         ref_policy=ref_policy,
         reward_model=reward_model,
-        train_dataset=train_dataset,
-        eval_dataset=eval_dataset,
+        train_dataset=prepare_dataset(train_dataset, tokenizer),
+        eval_dataset=prepare_dataset(eval_dataset, tokenizer),
     )
     trainer.train()
     trainer.save_model(config.output_dir)
