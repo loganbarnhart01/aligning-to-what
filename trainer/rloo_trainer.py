@@ -453,11 +453,11 @@ class RLOOTrainer(Trainer):
                 self.log(metrics)
             del kl, mean_kl, mean_entropy, scores
 
+            self.control = self.callback_handler.on_step_end(args, self.state, self.control)
             if args.save_steps > 0 and update % args.save_steps == 0:
                 self._save_checkpoint(model, trial=None, metrics=metrics)
                 self.control = self.callback_handler.on_save(self.args, self.state, self.control)
 
-            # self.control = self.callback_handler.on_step_end(args, self.state, self.control)
             # if self.control.should_save:
             #     self._save_checkpoint(model, trial=None, metrics=metrics)
             #     self.control = self.callback_handler.on_save(self.args, self.state, self.control)
