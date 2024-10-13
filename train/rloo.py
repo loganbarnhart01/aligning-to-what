@@ -25,18 +25,17 @@ from models.reward_model import RewardModelWrapper
 
 
 """
-CUDA_VISIBLE_DEVICES=0,1 nohup accelerate launch --config_file train/deepspeed_zero3_1.yaml train/rloo.py         \
     --dataset_name=trl-internal-testing/hh-rlhf-trl-style \
+CUDA_VISIBLE_DEVICES=0,1,2 nohup accelerate launch --config_file train/deepspeed_zero3_1.yaml train/rloo.py         \
     --model_name_or_path=meta-llama/Meta-Llama-3-8B         \
     --sft_model_path=meta-llama/Meta-Llama-3-8B         \
     --reward_model_path RLHFlow/ArmoRM-Llama3-8B-v0.1     \
-    --per_device_train_batch_size 4         \
+    --per_device_train_batch_size 2         \
     --learning_rate 1e-4         \
-    --gradient_accumulation_steps 2         \
+    --gradient_accumulation_steps 3         \
     --gradient_checkpointing=True         \
     --logging_steps 10         \
     --eval_steps 1000         \
-    --save_steps 1500         \
     --output_dir=/home/logan/covert-bias/weights/rloo_1         \
     --warmup_steps 150         \
     --report_to wandb         \
@@ -48,6 +47,7 @@ CUDA_VISIBLE_DEVICES=0,1 nohup accelerate launch --config_file train/deepspeed_z
     --fp16      \
     &> nohup.out &
 
+    --save_steps 1500         \
 
 """
 
@@ -76,7 +76,7 @@ if __name__ == "__main__":
     ################
     # Dataset
     ################
-    eval_samples = 20
+    eval_samples = config.per_device_train_batch_size * config.gradient_accumulation_steps * 4
     train_dataset = load_dataset("trl-internal-testing/hh-rlhf-trl-style", split="train")
     eval_dataset = load_dataset("trl-internal-testing/hh-rlhf-trl-style", split="test").select(range(eval_samples))
     dataset_text_field = "prompt"
