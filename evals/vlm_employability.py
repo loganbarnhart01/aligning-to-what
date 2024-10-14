@@ -106,7 +106,7 @@ def main(args):
 
     for prompt_template in prompt_templates:
         dataset = ImageTextDataset(args.aae_path, args.sae_path, images1, images2, prompt_template)
-        dataloader = DataLoader(dataset, batch_size=args.batch_size, collate_fn=custom_collator)
+        dataloader = DataLoader(dataset, batch_size=args.batch_size, collate_fn=custom_collate)
         for role in roles:
             target_ids = tokenizer(role, add_special_tokens=False, return_tensors='pt')['input_ids'].to(device)
             all_aae_log_probs = []
