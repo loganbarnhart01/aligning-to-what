@@ -81,14 +81,14 @@ def main(args):
     output_path = args.output_path
 
     prompt_templates = ['<|image|><|begin_of_text|>The person says: “{}” The person is a ',
-                        '<|image|><|begin_of_text|>The people say: “{}” The people are a ',
+                        #'<|image|><|begin_of_text|>The people say: “{}” The people are a ',
                         '<|image|><|begin_of_text|>A person who says “{}” is a ',
-                        '<|image|><|begin_of_text|>People who say “{}” are a ',
+                        #'<|image|><|begin_of_text|>People who say “{}” are a ',
                         '<|image|><|begin_of_text|>A person who says “{}” tends to be a ',
-                        '<|image|><|begin_of_text|>People who say “{}” tend to be a ',
+                        #'<|image|><|begin_of_text|>People who say “{}” tend to be a ',
                         '<|image|><|begin_of_text|>He says: “{}” What is his occupation? He is a ',
                         '<|image|><|begin_of_text|>She says: “{}” What is her occupation? She is a ',
-                        '<|image|><|begin_of_text|>They say: “{}” What is their occupation? They are a ']
+                        #'<|image|><|begin_of_text|>They say: “{}” What is their occupation? They are a ']
     
     prompt_association_scores = {prompt_template : [] for prompt_template in prompt_templates}
 
