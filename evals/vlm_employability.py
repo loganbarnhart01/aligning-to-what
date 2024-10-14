@@ -120,8 +120,8 @@ def main(args):
                 aae_inputs = processor(text=aae_texts, images=city_images, return_tensors="pt", padding=True).to(device)
                 sae_inputs = processor(text=sae_texts, images=suburb_images, return_tensors="pt", padding=True).to(device)
                 with autocast():
-                    aae_log_probs = get_log_probs(model, aae_inputs, target_token_ids)
-                    sae_log_probs = get_log_probs(model, sae_inputs, target_token_ids)
+                    aae_log_probs = get_log_probs(model, aae_inputs, target_ids)
+                    sae_log_probs = get_log_probs(model, sae_inputs, target_ids)
                 all_aae_log_probs.append(aae_log_probs)
                 all_sae_log_probs.append(sae_log_probs)
             all_aae_log_probs = torch.cat(all_aae_log_probs, dim=0)
