@@ -195,8 +195,6 @@ tokenizers==0.19.1
 tomli==2.0.1
 torch==2.2.2
 torchao==0.1
-torchtune==0.0.0
--e git+https://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@github.com/rezaakb/torchtune-rlhf.git@e4404d0cf8ac93e8f096751c89b3d8b8682f541f#egg=torchtune_rlhf
 tornado==6.3.3
 tqdm==4.66.0
 traitlets==5.9.0
