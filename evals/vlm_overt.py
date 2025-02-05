@@ -30,7 +30,7 @@ class FaceDataset(Dataset):
         self.prompt_template = prompt_template
         
     def __len__(self):
-        return len(self.aa_images) + len(self.ca_images)
+        return len(self.aa_images)
 
     def __getitem__(self, idx):
         return {
@@ -42,17 +42,17 @@ class FaceDataset(Dataset):
 def load_face_dataset(text_path, prompt_template, sample_size: int = 500) -> FaceDataset:
     """
     Load and filter the UTKFace dataset into specific demographic subsets.
-    
+
     Args:
         text_path: Path to text data
         sample_size: Number of samples per set
-        prompt_template to use    
+        prompt_template to use
     Returns:
         FaceDataset object
     """
     # Load the dataset
-    dataset = load_dataset("nu-delta/utkface")['train']
-    
+    dataset = load_dataset("nu-delta/utkface")['train'].shuffle(seed=42)
+
     # Create filters for each demographic group
     demographic_filters = {
         'black_male': lambda x: x['ethnicity'] == 'Black' and x['gender'] == 'Male',
@@ -60,12 +60,19 @@ def load_face_dataset(text_path, prompt_template, sample_size: int = 500) -> Fac
         'white_male': lambda x: x['ethnicity'] == 'White' and x['gender'] == 'Male',
         'white_female': lambda x: x['ethnicity'] == 'White' and x['gender'] == 'Female'
     }
-    
-    # Filter and sample the dataset for each group
-    filtered_sets = {}
-    for group, filter_fn in demographic_filters.items():
-        filtered_data = [item for item in dataset if filter_fn(item)]
-        filtered_sets[group] = random.sample(filtered_data, min(sample_size//2, len(filtered_data)))
+
+    # Initialize lists to store filtered data
+    filtered_sets = {group: [] for group in demographic_filters.keys()}
+
+    # Iterate through the dataset and collect samples until we have enough for each group
+    for item in dataset:
+        for group, filter_fn in demographic_filters.items():
+            if len(filtered_sets[group]) < sample_size // 2 and filter_fn(item):
+                filtered_sets[group].append(item)
+
+        # Check if we have enough samples for all groups
+        if all(len(filtered_sets[group]) >= sample_size // 2 for group in demographic_filters.keys()):
+            break
 
     aa_set = filtered_sets['black_male'] + filtered_sets['black_female']
     ca_set = filtered_sets['white_male'] + filtered_sets['white_female']
@@ -78,10 +85,10 @@ def load_face_dataset(text_path, prompt_template, sample_size: int = 500) -> Fac
     with open(text_path, 'r') as f:
         lines = [line.strip() for line in f]
     lines = lines[:len(aa_set)]  # Ensure the dialogue length matches the image sets
-    
+
     # Create dataset objects
     dataset = FaceDataset([item['image'] for item in aa_set], [item['image'] for item in ca_set], prompt_template, lines)
-    
+
     return dataset
 
 def custom_collate(batch):
@@ -176,7 +183,7 @@ def main(args):
     # Load datasets
     dataset = load_face_dataset(
         args.text_path,
-        prompt_template=None,
+        prompt_template=prompts[0],
         sample_size=args.sample_size,
     )
     
@@ -199,7 +206,7 @@ def main(args):
             adj_association_score = calculate_association_scores(model, processor, dataset_loader, adj)
             results[prompt_template].append(adj_association_score.item())
         #intermittently save results to avoid recomputation:
-        with open(args.output_path, 'wb') as f:
+        with open("final" + args.output_path, 'wb') as f:
             pickle.dump(results, f)
     
     
