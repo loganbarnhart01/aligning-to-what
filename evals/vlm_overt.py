@@ -145,7 +145,7 @@ def calculate_association_scores(model, processor, dataloader, adj):
                 return_tensors='pt'
             )['input_ids'].to(model.device)
     
-    for batch in dataloader:
+    for batch in tqdm(dataloader, desc=f"Processing adj: {adj}"):
         # Generate prompts for all racial identifier variants
         aa_images = batch['aa_images']
         ca_images = batch['ca_images']
@@ -206,12 +206,12 @@ def main(args):
             adj_association_score = calculate_association_scores(model, processor, dataset_loader, adj)
             results[prompt_template].append(adj_association_score.item())
         #intermittently save results to avoid recomputation:
-        with open("final" + args.output_path, 'wb') as f:
+        with open(args.output_path, 'wb') as f:
             pickle.dump(results, f)
     
     
     # Save results
-    with open(args.output_path, 'wb') as f:
+    with open("final" + args.output_path, 'wb') as f:
         pickle.dump(results, f)
 
 if __name__ == "__main__":
