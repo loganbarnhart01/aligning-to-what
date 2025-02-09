@@ -13,24 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """
-# regular:
-python examples/scripts/dpo.py \
-    --dataset_name=trl-internal-testing/hh-rlhf-trl-style \
-    --model_name_or_path=/home/logan/covert-bias/weights/llama3_sft/checkpoint-781 \
-    --per_device_train_batch_size 4 \
-    --learning_rate 1e-3 \
-    --gradient_accumulation_steps 1 \
-    --logging_steps 10 \
-    --eval_steps 500 \
-    --output_dir="weights/dpo_sft" \
-    --warmup_steps 150 \
-    --report_to wandb \
-    --bf16 \
-    --logging_first_step \
-    --no_remove_unused_columns
-
 # peft:
-CUDA_VISIBLE_DEVICES=0,2 nohup accelerate launch --multi_gpu train/dpo_5.py \
+CUDA_VISIBLE_DEVICES=0,2 accelerate launch --multi_gpu train/dpo_3.py \
     --dataset_name=trl-internal-testing/hh-rlhf-trl-style \
     --model_name_or_path=meta-llama/Meta-Llama-3-8B \
     --per_device_train_batch_size 4 \
@@ -52,7 +36,7 @@ CUDA_VISIBLE_DEVICES=0,2 nohup accelerate launch --multi_gpu train/dpo_5.py \
     --lora_alpha=16 \
     --num_train_epochs=3 \
     --torch_dtype=float16 \
-    --save_steps=1500 &> nohup.out & 
+    --save_steps=1500
 """
 import os
 
